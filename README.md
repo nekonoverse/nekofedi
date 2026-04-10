@@ -13,9 +13,12 @@ mkdir -p ~/.config/misskey-cli
 
 ```sh
 docker run -it --user $(id -u):$(id -g) \
+  -e TZ=Asia/Tokyo \
   -v ~/.config/misskey-cli:/home/user/.config/misskey-cli \
   ghcr.io/nananek/misskey-cli:latest
 ```
+
+`TZ` 環境変数でタイムラインの日時表示タイムゾーンを指定できます (省略時は UTC)。
 
 ## コマンド一覧
 

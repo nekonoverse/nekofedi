@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+from datetime import datetime
 
 from prompt_toolkit import PromptSession, print_formatted_text
 from prompt_toolkit.completion import Completer, Completion
@@ -33,13 +34,24 @@ COMMANDS = {
 }
 
 
+def _format_ts(iso_str):
+    """Convert ISO 8601 UTC timestamp to local time string (honors TZ env var)."""
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return iso_str[:19].replace("T", " ")
+
+
 def _format_note(note):
     user = note.get("user", {})
     name = user.get("name") or user.get("username", "???")
     username = user.get("username", "???")
     host = user.get("host")
     acct = f"@{username}@{host}" if host else f"@{username}"
-    ts = note.get("createdAt", "")[:19].replace("T", " ")
+    ts = _format_ts(note.get("createdAt", ""))
     note_id = note.get("id", "")
 
     parts = [
@@ -75,7 +87,7 @@ def _format_notification(notif):
     ntype = notif.get("type", "unknown")
     user = notif.get("user", {})
     name = user.get("name") or user.get("username", "???")
-    ts = notif.get("createdAt", "")[:19].replace("T", " ")
+    ts = _format_ts(notif.get("createdAt", ""))
 
     parts = [("ansibrightblack", f"  [{ts}] ")]
 
