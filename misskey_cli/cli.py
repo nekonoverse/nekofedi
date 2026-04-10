@@ -25,7 +25,8 @@ COMMANDS = {
     "note_text": "note_text [visibility] <text> - テキスト直接指定でノート投稿",
     "default_visibility": "default_visibility [visibility] - デフォルト公開範囲",
     "default_timeline": "default_timeline [home|local|hybrid|global] - デフォルトTL",
-    "reply": "reply <note_id> <text> - リプライ",
+    "reply": "reply <note_id> [visibility] - エディタでリプライ作成",
+    "reply_text": "reply_text <note_id> [visibility] <text> - テキスト直接指定でリプライ",
     "renote": "renote <note_id> - リノート",
     "react": "react <note_id> <emoji> - リアクション",
     "notif": "notif [件数] - 通知一覧",
@@ -128,7 +129,7 @@ def _format_notification(notif):
     return parts
 
 
-NOTE_ID_COMMANDS = ("reply", "renote", "react")
+NOTE_ID_COMMANDS = ("reply", "reply_text", "renote", "react")
 
 
 LUA_EMOJI_COMPLETE = r"""
@@ -234,6 +235,11 @@ class MisskeyCompleter(Completer):
                 if v.startswith(current):
                     yield Completion(v, start_position=-len(current))
 
+        elif cmd in ("reply", "reply_text") and arg_pos == 2:
+            for v in VISIBILITIES:
+                if v.startswith(current):
+                    yield Completion(v, start_position=-len(current))
+
         elif cmd == "react" and arg_pos == 2:
             # Emoji name completion (substring match)
             current_lower = current.lower()
@@ -245,6 +251,7 @@ class MisskeyCompleter(Completer):
 class MisskeyCLI:
     def __init__(self):
         self.username = None
+        self.user_id = None
         self._emoji_cache = None
         self._note_meta = []
         self.client = MisskeyClient()
@@ -252,6 +259,7 @@ class MisskeyCLI:
             try:
                 me = self.client.i()
                 self.username = me["username"]
+                self.user_id = me["id"]
                 print(f"{me.get('name') or me['username']} としてログイン中")
             except Exception:
                 print("保存済みトークンが無効です。'login' で再認証してください。")
@@ -301,9 +309,11 @@ class MisskeyCLI:
             return False
         return True
 
-    def _edit_text(self):
+    def _edit_text(self, initial=""):
         editor = os.environ.get("EDITOR", "nvim")
         with tempfile.NamedTemporaryFile(suffix=".md", mode="w+", delete=False) as f:
+            if initial:
+                f.write(initial)
             tmppath = f.name
 
         extra_files = []
@@ -332,6 +342,10 @@ class MisskeyCLI:
                     "-c", "set complete+=k",
                 ]
                 print("絵文字補完: <C-n> / <C-p> または <C-x><C-k>")
+
+            # If initial text was provided, jump cursor to end and start insert mode
+            if initial and editor_bin in ("nvim", "vim"):
+                cmd += ["-c", "normal! G$", "-c", "startinsert!"]
 
             cmd.append(tmppath)
             subprocess.call(cmd)
@@ -362,6 +376,7 @@ class MisskeyCLI:
             user = self.client.login(host)
             name = user.get("name") or user["username"]
             self.username = user["username"]
+            self.user_id = user.get("id")
             print(f"ログイン成功: {name}")
         except Exception as e:
             print(f"ログイン失敗: {e}")
@@ -457,20 +472,86 @@ class MisskeyCLI:
         config.set_default_timeline(v)
         print(f"デフォルトタイムラインを '{v}' に設定しました")
 
+    def _do_reply(self, note_id, explicit_visibility, text):
+        """Common reply logic. If text is None, opens editor with mention pre-filled."""
+        try:
+            original = self.client.show_note(note_id)
+        except Exception as e:
+            print(f"元ノート取得失敗: {e}")
+            return
+
+        orig_visibility = original.get("visibility", "public")
+        visibility = explicit_visibility or orig_visibility
+
+        orig_user = original.get("user", {}) or {}
+        orig_user_id = orig_user.get("id")
+        orig_username = orig_user.get("username", "")
+        orig_host = orig_user.get("host")
+        is_self = (orig_user_id is not None and orig_user_id == self.user_id)
+
+        mention = ""
+        if not is_self and orig_username:
+            mention = f"@{orig_username}" + (f"@{orig_host}" if orig_host else "")
+
+        if text is None:
+            initial = f"{mention} " if mention else ""
+            text = self._edit_text(initial=initial)
+            if not text:
+                print("空のリプライは送信しません。")
+                return
+            final_text = text
+        else:
+            if mention and not text.startswith(mention):
+                final_text = f"{mention} {text}"
+            else:
+                final_text = text
+
+        kwargs = {"visibility": visibility, "reply_id": note_id}
+        if visibility == "specified":
+            visible_ids = list(original.get("visibleUserIds") or [])
+            if orig_user_id and orig_user_id != self.user_id and orig_user_id not in visible_ids:
+                visible_ids.append(orig_user_id)
+            kwargs["visible_user_ids"] = visible_ids
+
+        try:
+            result = self.client.create_note(final_text, **kwargs)
+            note = result["createdNote"]
+            print(f"リプライしました [{note['id']}] ({visibility})")
+        except Exception as e:
+            print(f"エラー: {e}")
+
     def cmd_reply(self, arg):
         if not self._require_login():
             return
-        parts = arg.strip().split(None, 1)
-        if len(parts) < 2:
-            print("使い方: reply <note_id> <text>")
+        parts = arg.strip().split()
+        if not parts or len(parts) > 2:
+            print("使い方: reply <note_id> [visibility]")
             return
-        note_id, text = parts
-        try:
-            result = self.client.create_note(text, reply_id=note_id)
-            note = result["createdNote"]
-            print(f"リプライしました [{note['id']}]")
-        except Exception as e:
-            print(f"エラー: {e}")
+        note_id = parts[0]
+        explicit_vis = parts[1] if len(parts) > 1 else None
+        if explicit_vis and explicit_vis not in VISIBILITIES:
+            print(f"不正な visibility: {explicit_vis}")
+            return
+        self._do_reply(note_id, explicit_vis, text=None)
+
+    def cmd_reply_text(self, arg):
+        if not self._require_login():
+            return
+        parts = arg.strip().split(None, 2)
+        if len(parts) < 2:
+            print("使い方: reply_text <note_id> [visibility] <text>")
+            return
+        note_id = parts[0]
+        if parts[1] in VISIBILITIES:
+            if len(parts) < 3:
+                print("使い方: reply_text <note_id> [visibility] <text>")
+                return
+            explicit_vis = parts[1]
+            text = parts[2]
+        else:
+            explicit_vis = None
+            text = arg.strip().split(None, 1)[1]
+        self._do_reply(note_id, explicit_vis, text=text)
 
     def cmd_renote(self, arg):
         if not self._require_login():
@@ -529,6 +610,7 @@ class MisskeyCLI:
             "default_visibility": self.cmd_default_visibility,
             "default_timeline": self.cmd_default_timeline,
             "reply": self.cmd_reply,
+            "reply_text": self.cmd_reply_text,
             "renote": self.cmd_renote,
             "react": self.cmd_react,
             "notif": self.cmd_notif,

@@ -76,13 +76,18 @@ class MisskeyClient:
             raise ValueError(f"不明なタイムライン: {tl_type}")
         return self._post(endpoint, limit=limit)
 
-    def create_note(self, text, visibility="public", cw=None, reply_id=None):
+    def create_note(self, text, visibility="public", cw=None, reply_id=None, visible_user_ids=None):
         params = {"text": text, "visibility": visibility}
         if cw:
             params["cw"] = cw
         if reply_id:
             params["replyId"] = reply_id
+        if visible_user_ids is not None:
+            params["visibleUserIds"] = visible_user_ids
         return self._post("notes/create", **params)
+
+    def show_note(self, note_id):
+        return self._post("notes/show", noteId=note_id)
 
     def renote(self, note_id):
         return self._post("notes/create", renoteId=note_id)

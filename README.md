@@ -29,7 +29,8 @@ docker run -it --user $(id -u):$(id -g) \
 | `tl [home\|local\|hybrid\|global] [件数]` | タイムライン表示 |
 | `note [visibility]` | エディタ ($EDITOR, デフォルト nvim) でノートを書いて投稿 |
 | `note_text [visibility] <text>` | テキスト直接指定で投稿 |
-| `reply <note_id> <text>` | リプライ |
+| `reply <note_id> [visibility]` | エディタでリプライ作成 (メンション自動付与) |
+| `reply_text <note_id> [visibility] <text>` | テキスト直接指定でリプライ |
 | `renote <note_id>` | リノート |
 | `react <note_id> <emoji>` | リアクション (コロン不要、自動付与) |
 | `notif [件数]` | 通知一覧 |
@@ -39,6 +40,11 @@ docker run -it --user $(id -u):$(id -g) \
 | `quit` / `exit` | 終了 (C-d でも終了) |
 
 visibility: `public` / `home` / `followers` / `specified`
+
+リプライ時:
+- visibility 省略時は元ノートと同じ範囲を継承します (誤って広い範囲に投稿しないように)
+- 元投稿者へのメンション (`@user[@host]`) は自動で先頭に付与されます (自分自身へのリプライ時はスキップ)
+- 元ノートが `specified` の場合、元の `visibleUserIds` と元投稿者を引き継ぎます
 
 ## 補完
 
