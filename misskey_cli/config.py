@@ -6,18 +6,6 @@ CONFIG_DIR = Path(os.environ.get("MISSKEY_CLI_CONFIG_DIR", Path.home() / ".confi
 DB_PATH = CONFIG_DIR / "config.db"
 
 
-def _get_settings():
-    from .db import get_session, Settings
-    with get_session() as s:
-        row = s.query(Settings).first()
-        if not row:
-            row = Settings(default_visibility="public")
-            s.add(row)
-            s.commit()
-            s.refresh(row)
-        return row
-
-
 def get_active_account():
     from .db import get_session, Account
     with get_session() as s:
@@ -92,39 +80,45 @@ def delete_active_account():
 
 
 def get_default_visibility():
-    from .db import get_session, Settings
-    with get_session() as s:
-        row = s.query(Settings).first()
-        return row.default_visibility if row else "public"
+    """Return the active account's default visibility, or 'public' if none."""
+    acct = get_active_account()
+    return acct.default_visibility if acct else "public"
 
 
 def get_default_timeline():
-    from .db import get_session, Settings
-    with get_session() as s:
-        row = s.query(Settings).first()
-        return row.default_timeline if row else "home"
-
-
-def set_default_timeline(timeline):
-    from .db import get_session, Settings
-    with get_session() as s:
-        row = s.query(Settings).first()
-        if row:
-            row.default_timeline = timeline
-        else:
-            s.add(Settings(default_timeline=timeline))
-        s.commit()
+    """Return the active account's default timeline, or 'home' if none."""
+    acct = get_active_account()
+    return acct.default_timeline if acct else "home"
 
 
 def set_default_visibility(visibility):
-    from .db import get_session, Settings
+    """Persist the default visibility on the active account.
+
+    Returns True on success, False if no account is active.
+    """
+    from .db import get_session, Account
     with get_session() as s:
-        row = s.query(Settings).first()
-        if row:
-            row.default_visibility = visibility
-        else:
-            s.add(Settings(default_visibility=visibility))
+        acct = s.query(Account).filter_by(active=True).first()
+        if not acct:
+            return False
+        acct.default_visibility = visibility
         s.commit()
+        return True
+
+
+def set_default_timeline(timeline):
+    """Persist the default timeline on the active account.
+
+    Returns True on success, False if no account is active.
+    """
+    from .db import get_session, Account
+    with get_session() as s:
+        acct = s.query(Account).filter_by(active=True).first()
+        if not acct:
+            return False
+        acct.default_timeline = timeline
+        s.commit()
+        return True
 
 
 def save_credentials(host, token, username=None, software=None, scheme=None):

@@ -18,14 +18,9 @@ class Account(Base):
     active = Column(Boolean, nullable=False, default=False)
     software = Column(String)
     scheme = Column(String)
+    default_visibility = Column(String, nullable=False, default="public", server_default="public")
+    default_timeline = Column(String, nullable=False, default="home", server_default="home")
     created_at = Column(DateTime, server_default=func.now())
-
-
-class Settings(Base):
-    __tablename__ = "settings"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    default_visibility = Column(String, nullable=False, default="public")
-    default_timeline = Column(String, nullable=False, default="home")
 
 
 _engine = None

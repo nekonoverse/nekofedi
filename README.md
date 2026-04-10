@@ -45,8 +45,8 @@ docker run -it --user $(id -u):$(id -g) \
 | `renote <note_id>` | リノート |
 | `react <note_id> <emoji>` | リアクション (コロン不要、自動付与) |
 | `notif [件数]` | 通知一覧 |
-| `default_visibility [visibility]` | デフォルト公開範囲の設定/確認 |
-| `default_timeline [home\|local\|hybrid\|global]` | デフォルトタイムラインの設定/確認 |
+| `default_visibility [visibility]` | デフォルト公開範囲の設定/確認 (アクティブアカウントごと) |
+| `default_timeline [home\|local\|hybrid\|global]` | デフォルトタイムラインの設定/確認 (アクティブアカウントごと) |
 | `help` | コマンド一覧を表示 |
 | `quit` / `exit` | 終了 (C-d でも終了) |
 

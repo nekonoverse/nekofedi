@@ -570,6 +570,8 @@ class MisskeyCLI:
         if v not in VISIBILITIES:
             print(f"不正な値です。選択肢: {', '.join(VISIBILITIES)}")
             return
+        if not self._require_login():
+            return
         config.set_default_visibility(v)
         print(f"デフォルト公開範囲を '{v}' に設定しました")
 
@@ -580,6 +582,8 @@ class MisskeyCLI:
             return
         if v not in TL_TYPES:
             print(f"不正な値です。選択肢: {', '.join(TL_TYPES)}")
+            return
+        if not self._require_login():
             return
         config.set_default_timeline(v)
         print(f"デフォルトタイムラインを '{v}' に設定しました")
