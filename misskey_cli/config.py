@@ -24,6 +24,66 @@ def get_active_account():
         return s.query(Account).filter_by(active=True).first()
 
 
+def list_accounts():
+    from .db import get_session, Account
+    with get_session() as s:
+        return [
+            {"id": a.id, "host": a.host, "username": a.username, "active": bool(a.active)}
+            for a in s.query(Account).order_by(Account.id).all()
+        ]
+
+
+def _parse_acct(acct):
+    """Parse '@user@host' or 'user@host' or 'host' into (username, host).
+
+    Returns (username, host) where either may be None when not specified.
+    """
+    s = acct.lstrip("@")
+    if "@" in s:
+        username, host = s.split("@", 1)
+        return username or None, host or None
+    # Ambiguous: could be a bare host or a bare username.
+    # If the original started with '@', treat it as a username.
+    if acct.startswith("@"):
+        return s, None
+    return None, s
+
+
+def switch_account(acct):
+    """Switch active account by '@user@host' or 'host'.
+
+    Returns one of: 'ok', 'not_found', 'ambiguous'.
+    """
+    from .db import get_session, Account
+    username, host = _parse_acct(acct)
+    with get_session() as s:
+        q = s.query(Account)
+        if username is not None:
+            q = q.filter_by(username=username)
+        if host is not None:
+            q = q.filter_by(host=host)
+        matches = q.all()
+        if not matches:
+            return "not_found"
+        if len(matches) > 1:
+            return "ambiguous"
+        s.query(Account).update({"active": False})
+        matches[0].active = True
+        s.commit()
+        return "ok"
+
+
+def delete_active_account():
+    from .db import get_session, Account
+    with get_session() as s:
+        acct = s.query(Account).filter_by(active=True).first()
+        if not acct:
+            return False
+        s.delete(acct)
+        s.commit()
+        return True
+
+
 def get_host():
     acct = get_active_account()
     return acct.host if acct else None
@@ -75,11 +135,19 @@ def save_credentials(host, token, username=None):
     with get_session() as s:
         # deactivate all
         s.query(Account).update({"active": False})
-        # upsert by host+token
-        acct = s.query(Account).filter_by(host=host).first()
+        # Upsert by (host, username) to allow multiple accounts per host.
+        acct = None
+        if username:
+            acct = s.query(Account).filter_by(host=host, username=username).first()
+            if not acct:
+                # Adopt a legacy row that had no username persisted yet.
+                acct = s.query(Account).filter_by(host=host, username=None).first()
+        else:
+            acct = s.query(Account).filter_by(host=host).first()
         if acct:
             acct.token = token
-            acct.username = username
+            if username:
+                acct.username = username
             acct.active = True
         else:
             s.add(Account(host=host, token=token, username=username, active=True))

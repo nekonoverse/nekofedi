@@ -25,6 +25,8 @@ TL_TYPES = ("home", "local", "hybrid", "global")
 
 COMMANDS = {
     "login": "login <host> - インスタンスにログイン",
+    "account": "account [use <host>] - アカウント一覧 / 切替",
+    "logout": "アクティブなアカウントを削除",
     "i": "自分のプロフィール表示",
     "tl": "tl [home|local|hybrid|global] [件数] - タイムライン表示",
     "note": "note [visibility] - nvim でノート作成",
@@ -253,6 +255,21 @@ class MisskeyCompleter(Completer):
                 if current_lower in name.lower():
                     yield Completion(name, start_position=-len(current))
 
+        elif cmd == "account":
+            if arg_pos == 1:
+                for sub in ("use",):
+                    if sub.startswith(current):
+                        yield Completion(sub, start_position=-len(current))
+            elif arg_pos == 2 and len(parts) >= 2 and parts[1] == "use":
+                for a in config.list_accounts():
+                    if a["username"]:
+                        acct = f"@{a['username']}@{a['host']}"
+                    else:
+                        acct = a["host"]
+                    if acct.startswith(current):
+                        meta = "(active)" if a["active"] else ""
+                        yield Completion(acct, start_position=-len(current), display_meta=meta)
+
 
 class MisskeyCLI:
     def __init__(self):
@@ -383,9 +400,66 @@ class MisskeyCLI:
             name = user.get("name") or user["username"]
             self.username = user["username"]
             self.user_id = user.get("id")
+            self._emoji_cache = None
+            self._note_meta = []
             print(f"ログイン成功: {name}")
         except Exception as e:
             print(f"ログイン失敗: {e}")
+
+    def _reload_client(self):
+        self.client = MisskeyClient()
+        self.username = None
+        self.user_id = None
+        self._emoji_cache = None
+        self._note_meta = []
+        if self.client.logged_in:
+            try:
+                me = self.client.i()
+                self.username = me["username"]
+                self.user_id = me["id"]
+            except Exception:
+                print("保存済みトークンが無効です。")
+                self.client.token = None
+
+    def cmd_account(self, arg):
+        parts = arg.strip().split()
+        if not parts:
+            accounts = config.list_accounts()
+            if not accounts:
+                print("アカウントがありません。'login <host>' でログインしてください。")
+                return
+            for a in accounts:
+                mark = "*" if a["active"] else " "
+                uname = f"@{a['username']}" if a["username"] else "(unknown)"
+                print(f"  {mark} {uname}@{a['host']}")
+            return
+        sub = parts[0]
+        if sub == "use":
+            if len(parts) < 2:
+                print("使い方: account use @user@host  (1ホスト1アカウントなら host のみでも可)")
+                return
+            target = parts[1]
+            result = config.switch_account(target)
+            if result == "not_found":
+                print(f"アカウントが見つかりません: {target}")
+                return
+            if result == "ambiguous":
+                print(f"複数該当します。'@user@host' で指定してください: {target}")
+                return
+            self._reload_client()
+            who = f"@{self.username}@{self.client.host}" if self.username else target
+            print(f"切替: {who}")
+        else:
+            print(f"不明なサブコマンド: {sub}")
+
+    def cmd_logout(self, arg):
+        if not self.client.logged_in:
+            print("ログインしていません。")
+            return
+        host = self.client.host
+        config.delete_active_account()
+        self._reload_client()
+        print(f"ログアウト: {host}")
 
     def cmd_i(self, arg):
         if not self._require_login():
@@ -612,6 +686,8 @@ class MisskeyCLI:
         print("Misskey CLI - 'help' でコマンド一覧、'quit' で終了")
         dispatch = {
             "login": self.cmd_login,
+            "account": self.cmd_account,
+            "logout": self.cmd_logout,
             "i": self.cmd_i,
             "tl": self.cmd_tl,
             "note": self.cmd_note,

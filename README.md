@@ -25,6 +25,9 @@ docker run -it --user $(id -u):$(id -g) \
 | コマンド | 説明 |
 |---------|------|
 | `login <host>` | インスタンスにログイン (MiAuth) |
+| `account` | 登録済みアカウント一覧 (アクティブに `*`) |
+| `account use @user@host` | アクティブアカウントを切り替え (1ホスト1アカウントなら host のみでも可) |
+| `logout` | アクティブアカウントを削除 |
 | `i` | 自分のプロフィール表示 |
 | `tl [home\|local\|hybrid\|global] [件数]` | タイムライン表示 |
 | `note [visibility]` | エディタ ($EDITOR, デフォルト nvim) でノートを書いて投稿 |
@@ -55,6 +58,7 @@ Tab キーでドロップダウン補完が表示されます。
 - `note` / `note_text` / `default_visibility` の公開範囲
 - `reply` / `renote` / `react` のノートID (直近の tl/notif から取得、新しい順)
 - `react` の絵文字ショートコード (部分一致検索)
+- `account use` のアカウント (`@user@host`、登録済みから)
 
 `note` でエディタが nvim の場合、挿入モードで `:` を入力するとポップアップが出て、続けてタイプすると部分一致で絞り込まれます (Misskey Web UI 風)。`<C-n>`/`<C-p>` で選択、`<C-y>` で確定。
 vim の場合は dictionary completion として読み込まれるので、`<C-n>` または `<C-x><C-k>` で `:emoji_name:` を補完できます。

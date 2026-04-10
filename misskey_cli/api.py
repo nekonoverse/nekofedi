@@ -58,8 +58,9 @@ class MisskeyClient:
 
         self.token = data["token"]
         self.host = host
-        config.save_credentials(host, self.token)
-        return data.get("user")
+        user = data.get("user") or {}
+        config.save_credentials(host, self.token, username=user.get("username"))
+        return user
 
     def i(self):
         return self._post("i")
