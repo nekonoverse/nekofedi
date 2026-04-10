@@ -91,9 +91,13 @@ def _format_notification(notif):
         return f"  [{ts}] {ntype} {name}"
 
 
+NOTE_ID_COMMANDS = ("reply", "renote", "react")
+
+
 class MisskeyCompleter(Completer):
-    def __init__(self, get_emoji_shortcodes):
-        self._get_emoji_shortcodes = get_emoji_shortcodes
+    def __init__(self, get_emoji_names, get_note_ids):
+        self._get_emoji_names = get_emoji_names
+        self._get_note_ids = get_note_ids
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -110,6 +114,14 @@ class MisskeyCompleter(Completer):
         cmd = parts[0]
         # Current word being typed (empty if trailing space)
         current = parts[-1] if not text.endswith(" ") else ""
+        arg_pos = len(parts) - 1 if text.endswith(" ") else len(parts) - 1
+
+        # Note ID completion (first arg of reply/renote/react)
+        if cmd in NOTE_ID_COMMANDS and arg_pos <= 1:
+            for nid in self._get_note_ids():
+                if nid.startswith(current):
+                    yield Completion(nid, start_position=-len(current))
+            return
 
         if cmd == "tl" and len(parts) <= 2:
             for t in TL_TYPES:
@@ -126,19 +138,19 @@ class MisskeyCompleter(Completer):
                 if v.startswith(current):
                     yield Completion(v, start_position=-len(current))
 
-        elif cmd == "react" and len(parts) >= 2:
-            # Second arg onwards: emoji shortcodes
-            arg_count = len(parts) - 1 if text.endswith(" ") else len(parts) - 1
-            if arg_count >= 1:
-                for code in self._get_emoji_shortcodes():
-                    if code.startswith(current):
-                        yield Completion(code, start_position=-len(current))
+        elif cmd == "react" and arg_pos >= 2:
+            # Emoji name completion (substring match)
+            current_lower = current.lower()
+            for name in self._get_emoji_names():
+                if current_lower in name.lower():
+                    yield Completion(name, start_position=-len(current))
 
 
 class MisskeyCLI:
     def __init__(self):
         self.username = None
         self._emoji_cache = None
+        self._note_ids = []
         self.client = MisskeyClient()
         if self.client.logged_in:
             try:
@@ -152,17 +164,31 @@ class MisskeyCLI:
         config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self.session = PromptSession(
             history=FileHistory(HISTORY_FILE),
-            completer=MisskeyCompleter(self._get_emoji_shortcodes),
+            completer=MisskeyCompleter(self._get_emoji_names, self._get_note_ids),
         )
 
-    def _get_emoji_shortcodes(self):
+    def _get_emoji_names(self):
         if self._emoji_cache is None and self.client.logged_in:
             try:
                 emojis = self.client.emojis()
-                self._emoji_cache = [f":{e['name']}:" for e in emojis]
+                self._emoji_cache = [e['name'] for e in emojis]
             except Exception:
                 self._emoji_cache = []
         return self._emoji_cache or []
+
+    def _get_note_ids(self):
+        return self._note_ids
+
+    def _collect_note_ids(self, notes):
+        """Add note IDs to cache (most recent first, deduped)."""
+        seen = set(self._note_ids)
+        new_ids = []
+        for note in notes:
+            nid = note.get("id", "")
+            if nid and nid not in seen:
+                new_ids.append(nid)
+                seen.add(nid)
+        self._note_ids = new_ids + self._note_ids
 
     def _get_prompt(self):
         if self.username and self.client.host:
@@ -237,6 +263,7 @@ class MisskeyCLI:
             if not notes:
                 print("ノートがありません。")
                 return
+            self._collect_note_ids(notes)
             for note in reversed(notes):
                 print(_format_note(note))
                 print()
@@ -339,6 +366,8 @@ class MisskeyCLI:
             print("使い方: react <note_id> <emoji>")
             return
         note_id, reaction = parts
+        if not reaction.startswith(":"):
+            reaction = f":{reaction}:"
         try:
             self.client.react(note_id, reaction)
             print(f"リアクションしました {reaction}")
@@ -354,6 +383,9 @@ class MisskeyCLI:
             if not notifs:
                 print("通知はありません。")
                 return
+            note_ids = [n["note"]["id"] for n in notifs if n.get("note", {}).get("id")]
+            if note_ids:
+                self._collect_note_ids([{"id": nid} for nid in note_ids])
             for n in notifs:
                 print(_format_notification(n))
         except Exception as e:
