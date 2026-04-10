@@ -41,6 +41,24 @@ def get_default_visibility():
         return row.default_visibility if row else "public"
 
 
+def get_default_timeline():
+    from .db import get_session, Settings
+    with get_session() as s:
+        row = s.query(Settings).first()
+        return row.default_timeline if row else "home"
+
+
+def set_default_timeline(timeline):
+    from .db import get_session, Settings
+    with get_session() as s:
+        row = s.query(Settings).first()
+        if row:
+            row.default_timeline = timeline
+        else:
+            s.add(Settings(default_timeline=timeline))
+        s.commit()
+
+
 def set_default_visibility(visibility):
     from .db import get_session, Settings
     with get_session() as s:

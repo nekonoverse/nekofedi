@@ -21,6 +21,7 @@ COMMANDS = {
     "note": "note [visibility] - nvim でノート作成",
     "note_text": "note_text [visibility] <text> - テキスト直接指定でノート投稿",
     "default_visibility": "default_visibility [visibility] - デフォルト公開範囲",
+    "default_timeline": "default_timeline [home|local|hybrid|global] - デフォルトTL",
     "reply": "reply <note_id> <text> - リプライ",
     "renote": "renote <note_id> - リノート",
     "react": "react <note_id> <emoji> - リアクション",
@@ -111,6 +112,11 @@ class MisskeyCompleter(Completer):
         current = parts[-1] if not text.endswith(" ") else ""
 
         if cmd == "tl" and len(parts) <= 2:
+            for t in TL_TYPES:
+                if t.startswith(current):
+                    yield Completion(t, start_position=-len(current))
+
+        elif cmd == "default_timeline" and len(parts) <= 2:
             for t in TL_TYPES:
                 if t.startswith(current):
                     yield Completion(t, start_position=-len(current))
@@ -224,7 +230,7 @@ class MisskeyCLI:
         if not self._require_login():
             return
         parts = arg.strip().split()
-        tl_type = parts[0] if parts else "home"
+        tl_type = parts[0] if parts else config.get_default_timeline()
         limit = int(parts[1]) if len(parts) > 1 else 10
         try:
             notes = self.client.timeline(tl_type, limit)
@@ -285,6 +291,17 @@ class MisskeyCLI:
             return
         config.set_default_visibility(v)
         print(f"デフォルト公開範囲を '{v}' に設定しました")
+
+    def cmd_default_timeline(self, arg):
+        v = arg.strip()
+        if not v:
+            print(f"現在のデフォルト: {config.get_default_timeline()}")
+            return
+        if v not in TL_TYPES:
+            print(f"不正な値です。選択肢: {', '.join(TL_TYPES)}")
+            return
+        config.set_default_timeline(v)
+        print(f"デフォルトタイムラインを '{v}' に設定しました")
 
     def cmd_reply(self, arg):
         if not self._require_login():
@@ -351,6 +368,7 @@ class MisskeyCLI:
             "note": self.cmd_note,
             "note_text": self.cmd_note_text,
             "default_visibility": self.cmd_default_visibility,
+            "default_timeline": self.cmd_default_timeline,
             "reply": self.cmd_reply,
             "renote": self.cmd_renote,
             "react": self.cmd_react,
@@ -363,7 +381,10 @@ class MisskeyCLI:
         while True:
             try:
                 text = self.session.prompt(self._get_prompt()).strip()
-            except (EOFError, KeyboardInterrupt):
+            except KeyboardInterrupt:
+                print()
+                continue
+            except EOFError:
                 print("bye")
                 break
 

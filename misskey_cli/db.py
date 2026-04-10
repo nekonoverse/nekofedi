@@ -23,6 +23,7 @@ class Settings(Base):
     __tablename__ = "settings"
     id = Column(Integer, primary_key=True, autoincrement=True)
     default_visibility = Column(String, nullable=False, default="public")
+    default_timeline = Column(String, nullable=False, default="home")
 
 
 _engine = None
