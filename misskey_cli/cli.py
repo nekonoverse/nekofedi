@@ -1,17 +1,34 @@
-import atexit
-import cmd
 import os
-import readline
 import subprocess
 import tempfile
+
+from prompt_toolkit import PromptSession, print_formatted_text, HTML
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.history import FileHistory
 
 from .api import MisskeyClient
 from . import config
 
-HISTORY_FILE = config.CONFIG_DIR / "history"
+HISTORY_FILE = str(config.CONFIG_DIR / "history")
 
 VISIBILITIES = ("public", "home", "followers", "specified")
 TL_TYPES = ("home", "local", "hybrid", "global")
+
+COMMANDS = {
+    "login": "login <host> - インスタンスにログイン",
+    "i": "自分のプロフィール表示",
+    "tl": "tl [home|local|hybrid|global] [件数] - タイムライン表示",
+    "note": "note [visibility] - nvim でノート作成",
+    "note_text": "note_text [visibility] <text> - テキスト直接指定でノート投稿",
+    "default_visibility": "default_visibility [visibility] - デフォルト公開範囲",
+    "reply": "reply <note_id> <text> - リプライ",
+    "renote": "renote <note_id> - リノート",
+    "react": "react <note_id> <emoji> - リアクション",
+    "notif": "notif [件数] - 通知一覧",
+    "help": "コマンド一覧を表示",
+    "quit": "終了",
+    "exit": "終了",
+}
 
 
 def _format_note(note):
@@ -73,12 +90,47 @@ def _format_notification(notif):
         return f"  [{ts}] {ntype} {name}"
 
 
-class MisskeyCLI(cmd.Cmd):
-    intro = "Misskey CLI - 'help' でコマンド一覧、'quit' で終了"
+class MisskeyCompleter(Completer):
+    def __init__(self, get_emoji_shortcodes):
+        self._get_emoji_shortcodes = get_emoji_shortcodes
 
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        parts = text.split()
+
+        if not parts or (len(parts) == 1 and not text.endswith(" ")):
+            # Completing command name
+            word = parts[0] if parts else ""
+            for cmd_name, desc in COMMANDS.items():
+                if cmd_name.startswith(word):
+                    yield Completion(cmd_name, start_position=-len(word), display_meta=desc)
+            return
+
+        cmd = parts[0]
+        # Current word being typed (empty if trailing space)
+        current = parts[-1] if not text.endswith(" ") else ""
+
+        if cmd == "tl" and len(parts) <= 2:
+            for t in TL_TYPES:
+                if t.startswith(current):
+                    yield Completion(t, start_position=-len(current))
+
+        elif cmd in ("note", "note_text", "default_visibility") and len(parts) <= 2:
+            for v in VISIBILITIES:
+                if v.startswith(current):
+                    yield Completion(v, start_position=-len(current))
+
+        elif cmd == "react" and len(parts) >= 2:
+            # Second arg onwards: emoji shortcodes
+            arg_count = len(parts) - 1 if text.endswith(" ") else len(parts) - 1
+            if arg_count >= 1:
+                for code in self._get_emoji_shortcodes():
+                    if code.startswith(current):
+                        yield Completion(code, start_position=-len(current))
+
+
+class MisskeyCLI:
     def __init__(self):
-        super().__init__()
-        self._init_history()
         self.username = None
         self._emoji_cache = None
         self.client = MisskeyClient()
@@ -90,34 +142,12 @@ class MisskeyCLI(cmd.Cmd):
             except Exception:
                 print("保存済みトークンが無効です。'login' で再認証してください。")
                 self.client.token = None
-        self._update_prompt()
 
-    def _init_history(self):
         config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        try:
-            readline.read_history_file(HISTORY_FILE)
-        except FileNotFoundError:
-            pass
-        readline.set_history_length(1000)
-        atexit.register(readline.write_history_file, HISTORY_FILE)
-        # Tab で候補を順にサイクル (zsh の menu-complete 風)
-        readline.parse_and_bind("tab: menu-complete")
-        readline.parse_and_bind("set show-all-if-ambiguous on")
-        readline.parse_and_bind("set menu-complete-display-prefix on")
-        readline.parse_and_bind("set colored-completion-prefix on")
-
-    def _update_prompt(self):
-        dim = "\001\033[2m\002"
-        reset = "\001\033[0m\002"
-        if self.username and self.client.host:
-            who = f"@{self.username}{dim}@{self.client.host}{reset}"
-        else:
-            who = "(no login)"
-        vis = config.get_default_visibility()
-        self.prompt = f"{who} [{vis}]> "
-
-    def _complete_choices(self, choices, text):
-        return [c for c in choices if c.startswith(text)]
+        self.session = PromptSession(
+            history=FileHistory(HISTORY_FILE),
+            completer=MisskeyCompleter(self._get_emoji_shortcodes),
+        )
 
     def _get_emoji_shortcodes(self):
         if self._emoji_cache is None and self.client.logged_in:
@@ -128,24 +158,14 @@ class MisskeyCLI(cmd.Cmd):
                 self._emoji_cache = []
         return self._emoji_cache or []
 
-    def complete_tl(self, text, line, begidx, endidx):
-        return self._complete_choices(TL_TYPES, text)
-
-    def complete_note(self, text, line, begidx, endidx):
-        return self._complete_choices(VISIBILITIES, text)
-
-    def complete_note_text(self, text, line, begidx, endidx):
-        return self._complete_choices(VISIBILITIES, text)
-
-    def complete_default_visibility(self, text, line, begidx, endidx):
-        return self._complete_choices(VISIBILITIES, text)
-
-    def complete_react(self, text, line, begidx, endidx):
-        # Complete emoji shortcodes for the second argument
-        parts = line[:begidx].split()
-        if len(parts) >= 2:
-            return self._complete_choices(self._get_emoji_shortcodes(), text)
-        return []
+    def _get_prompt(self):
+        if self.username and self.client.host:
+            who = [("", f"@{self.username}"), ("ansibrightblack", f"@{self.client.host}")]
+        else:
+            who = [("", "(no login)")]
+        vis = config.get_default_visibility()
+        who.append(("", f" [{vis}]> "))
+        return who
 
     def _require_login(self):
         if not self.client.logged_in:
@@ -153,8 +173,28 @@ class MisskeyCLI(cmd.Cmd):
             return False
         return True
 
-    def do_login(self, arg):
-        """login <host> - インスタンスにログイン"""
+    def _edit_text(self):
+        editor = os.environ.get("EDITOR", "nvim")
+        with tempfile.NamedTemporaryFile(suffix=".md", mode="w+", delete=False) as f:
+            tmppath = f.name
+        try:
+            subprocess.call([editor, tmppath])
+            with open(tmppath) as f:
+                text = f.read().strip()
+            return text or None
+        finally:
+            os.unlink(tmppath)
+
+    def _resolve_visibility(self, arg):
+        if arg and arg in VISIBILITIES:
+            return arg
+        return config.get_default_visibility()
+
+    def cmd_help(self, arg):
+        for name, desc in COMMANDS.items():
+            print(f"  {name:22s} {desc}")
+
+    def cmd_login(self, arg):
         host = arg.strip()
         if not host:
             print("使い方: login <host>  例: login misskey.caligula-sea.net")
@@ -163,13 +203,11 @@ class MisskeyCLI(cmd.Cmd):
             user = self.client.login(host)
             name = user.get("name") or user["username"]
             self.username = user["username"]
-            self._update_prompt()
             print(f"ログイン成功: {name}")
         except Exception as e:
             print(f"ログイン失敗: {e}")
 
-    def do_i(self, arg):
-        """自分のプロフィールを表示"""
+    def cmd_i(self, arg):
         if not self._require_login():
             return
         try:
@@ -182,8 +220,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_tl(self, arg):
-        """tl [home|local|hybrid|global] [件数] - タイムライン表示"""
+    def cmd_tl(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split()
@@ -200,25 +237,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def _resolve_visibility(self, arg):
-        if arg and arg in VISIBILITIES:
-            return arg
-        return config.get_default_visibility()
-
-    def _edit_text(self):
-        editor = os.environ.get("EDITOR", "nvim")
-        with tempfile.NamedTemporaryFile(suffix=".md", mode="w+", delete=False) as f:
-            tmppath = f.name
-        try:
-            subprocess.call([editor, tmppath])
-            with open(tmppath) as f:
-                text = f.read().strip()
-            return text or None
-        finally:
-            os.unlink(tmppath)
-
-    def do_note(self, arg):
-        """note [visibility] - nvim でノートを書いて投稿 (visibility: public/home/followers/specified)"""
+    def cmd_note(self, arg):
         if not self._require_login():
             return
         visibility = self._resolve_visibility(arg.strip())
@@ -233,8 +252,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_note_text(self, arg):
-        """note_text [visibility] <text> - テキストを直接指定してノート投稿"""
+    def cmd_note_text(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split(None, 1)
@@ -257,8 +275,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_default_visibility(self, arg):
-        """default_visibility [visibility] - デフォルト公開範囲を設定/確認"""
+    def cmd_default_visibility(self, arg):
         v = arg.strip()
         if not v:
             print(f"現在のデフォルト: {config.get_default_visibility()}")
@@ -267,11 +284,9 @@ class MisskeyCLI(cmd.Cmd):
             print(f"不正な値です。選択肢: {', '.join(VISIBILITIES)}")
             return
         config.set_default_visibility(v)
-        self._update_prompt()
         print(f"デフォルト公開範囲を '{v}' に設定しました")
 
-    def do_reply(self, arg):
-        """reply <note_id> <text> - リプライ"""
+    def cmd_reply(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split(None, 1)
@@ -286,8 +301,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_renote(self, arg):
-        """renote <note_id> - リノート"""
+    def cmd_renote(self, arg):
         if not self._require_login():
             return
         note_id = arg.strip()
@@ -300,8 +314,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_react(self, arg):
-        """react <note_id> <emoji> - リアクション (例: react abc123 👍)"""
+    def cmd_react(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split(None, 1)
@@ -315,8 +328,7 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_notif(self, arg):
-        """notif [件数] - 通知一覧"""
+    def cmd_notif(self, arg):
         if not self._require_login():
             return
         limit = int(arg.strip()) if arg.strip() else 10
@@ -330,13 +342,44 @@ class MisskeyCLI(cmd.Cmd):
         except Exception as e:
             print(f"エラー: {e}")
 
-    def do_quit(self, arg):
-        """終了"""
-        print("bye")
-        return True
+    def cmdloop(self):
+        print("Misskey CLI - 'help' でコマンド一覧、'quit' で終了")
+        dispatch = {
+            "login": self.cmd_login,
+            "i": self.cmd_i,
+            "tl": self.cmd_tl,
+            "note": self.cmd_note,
+            "note_text": self.cmd_note_text,
+            "default_visibility": self.cmd_default_visibility,
+            "reply": self.cmd_reply,
+            "renote": self.cmd_renote,
+            "react": self.cmd_react,
+            "notif": self.cmd_notif,
+            "help": self.cmd_help,
+            "quit": None,
+            "exit": None,
+        }
 
-    do_exit = do_quit
-    do_EOF = do_quit
+        while True:
+            try:
+                text = self.session.prompt(self._get_prompt()).strip()
+            except (EOFError, KeyboardInterrupt):
+                print("bye")
+                break
 
-    def emptyline(self):
-        pass
+            if not text:
+                continue
+
+            parts = text.split(None, 1)
+            cmd_name = parts[0]
+            arg = parts[1] if len(parts) > 1 else ""
+
+            if cmd_name in ("quit", "exit"):
+                print("bye")
+                break
+
+            handler = dispatch.get(cmd_name)
+            if handler:
+                handler(arg)
+            else:
+                print(f"不明なコマンド: {cmd_name} ('help' で一覧表示)")
