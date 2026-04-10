@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t misskey-cli .
+
+      - name: Test import
+        run: |
+          docker run --rm --entrypoint python misskey-cli -c "
+          from misskey_cli.migrate import run_upgrade
+          from misskey_cli.api import MisskeyClient
+          from misskey_cli.cli import MisskeyCLI
+          print('import ok')
+          "
