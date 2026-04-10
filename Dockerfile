@@ -4,4 +4,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY misskey_cli/ misskey_cli/
+RUN mkdir -p /home/user/.config/misskey-cli && chmod 777 /home/user
+ENV HOME=/home/user
 ENTRYPOINT ["python", "-m", "misskey_cli"]
