@@ -100,6 +100,11 @@ class MisskeyCLI(cmd.Cmd):
             pass
         readline.set_history_length(1000)
         atexit.register(readline.write_history_file, HISTORY_FILE)
+        # Tab で候補を順にサイクル (zsh の menu-complete 風)
+        readline.parse_and_bind("tab: menu-complete")
+        readline.parse_and_bind("set show-all-if-ambiguous on")
+        readline.parse_and_bind("set menu-complete-display-prefix on")
+        readline.parse_and_bind("set colored-completion-prefix on")
 
     def _update_prompt(self):
         dim = "\001\033[2m\002"
