@@ -190,6 +190,15 @@ def test_react_unicode(alice, bob):
     bob.react(note["id"], ":\u2b50:")
 
 
+def test_react_custom_shortcode(alice, bob):
+    """Custom emoji shortcodes must be sent colon-wrapped to pass server-side
+    validation. The shortcode does not need to exist as a registered emoji —
+    add_reaction stores the bare string and only enriches federation tags when
+    a row exists, so this is a pure validator regression test."""
+    note = alice.create_note("react custom target")["createdNote"]
+    bob.react(note["id"], ":testreact:")
+
+
 def test_notifications_list(bob):
     notifs = bob.notifications(limit=5)
     assert isinstance(notifs, list)

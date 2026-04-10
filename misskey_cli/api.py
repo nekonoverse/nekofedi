@@ -179,6 +179,10 @@ class NekonoverseClient(_BaseClient):
 
     _VIS_OUT = {"home": "unlisted", "specified": "direct"}
     _VIS_IN = {"unlisted": "home", "direct": "specified"}
+    # Mirrors Nekonoverse's CUSTOM_EMOJI_PATTERN so we can tell a real
+    # `:shortcode:` (which the server wants colon-wrapped) apart from a
+    # unicode emoji that the CLI wrapped in colons before passing it down.
+    _SHORTCODE_RE = re.compile(r"^:([a-zA-Z0-9_]+)(?:@([a-zA-Z0-9.-]+))?:$")
 
     def _headers(self):
         h = {"Accept": "application/json"}
@@ -314,13 +318,17 @@ class NekonoverseClient(_BaseClient):
         return self._normalize_note(s) if s else None
 
     def react(self, note_id, reaction):
-        # CLI passes the reaction wrapped in colons (e.g. ":neko:").
-        # Nekonoverse's emoji reaction endpoint takes the bare shortcode in the
-        # path; unicode emoji are also accepted as-is.
-        if len(reaction) >= 2 and reaction.startswith(":") and reaction.endswith(":"):
-            emoji = reaction[1:-1]
-        else:
-            emoji = reaction
+        # The CLI auto-wraps every reaction in colons (`:foo:` / `:⭐:`).
+        # Nekonoverse expects custom shortcodes colon-wrapped but unicode
+        # emoji bare, so unwrap anything that doesn't look like a shortcode.
+        emoji = reaction
+        if (
+            len(emoji) >= 2
+            and emoji.startswith(":")
+            and emoji.endswith(":")
+            and not self._SHORTCODE_RE.match(emoji)
+        ):
+            emoji = emoji[1:-1]
         encoded = urllib.parse.quote(emoji, safe="")
         return self._post(f"api/v1/statuses/{note_id}/react/{encoded}")
 
