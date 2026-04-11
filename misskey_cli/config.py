@@ -121,6 +121,26 @@ def set_default_timeline(timeline):
         return True
 
 
+def get_app_config(key, default=None):
+    """Read a value from the global app_config key/value table."""
+    from .db import get_session, AppConfig
+    with get_session() as s:
+        row = s.query(AppConfig).filter_by(key=key).first()
+        return row.value if row else default
+
+
+def set_app_config(key, value):
+    """Upsert a value into the global app_config key/value table."""
+    from .db import get_session, AppConfig
+    with get_session() as s:
+        row = s.query(AppConfig).filter_by(key=key).first()
+        if row:
+            row.value = value
+        else:
+            s.add(AppConfig(key=key, value=value))
+        s.commit()
+
+
 def save_credentials(host, token, username=None, software=None, scheme=None):
     from .db import get_session, Account
     with get_session() as s:

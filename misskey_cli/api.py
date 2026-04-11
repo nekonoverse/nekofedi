@@ -7,6 +7,7 @@ import webbrowser
 import requests
 
 from . import config
+from .i18n import _
 
 PERMISSIONS = [
     "read:account",
@@ -90,7 +91,7 @@ class _BaseClient:
 
     @staticmethod
     def _open_auth_url(url):
-        print(f"ブラウザで以下のURLを開いて認証してください:\n{url}")
+        print(_("auth.open_browser", url=url))
         try:
             webbrowser.open(url)
         except Exception:
@@ -114,14 +115,14 @@ class MisskeyClient(_BaseClient):
 
         self._open_auth_url(auth_url)
 
-        input("\n認証が完了したらEnterを押してください...")
+        input(_("auth.press_enter"))
 
         resp = requests.post(self._url(f"api/miauth/{session_id}/check"), json={}, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
         if not data.get("ok"):
-            raise RuntimeError("認証に失敗しました")
+            raise RuntimeError(_("auth.miauth_failed"))
 
         self.token = data["token"]
         self.host = host
@@ -139,7 +140,7 @@ class MisskeyClient(_BaseClient):
         }
         endpoint = endpoints.get(tl_type)
         if not endpoint:
-            raise ValueError(f"不明なタイムライン: {tl_type}")
+            raise ValueError(_("error.unknown_timeline", tl_type=tl_type))
         return self._post(endpoint, limit=limit)
 
     def create_note(self, text, visibility="public", cw=None, reply_id=None, visible_user_ids=None):
@@ -240,9 +241,9 @@ class NekonoverseClient(_BaseClient):
         self._open_auth_url(auth_url)
 
         # Step 3: paste the OOB authorization code.
-        code = input("\n認可コードを貼り付けて Enter: ").strip()
+        code = input(_("auth.paste_code")).strip()
         if not code:
-            raise RuntimeError("認可コードが入力されませんでした")
+            raise RuntimeError(_("auth.code_missing"))
 
         # Step 4: exchange the code for an access token.
         token_resp = requests.post(
@@ -293,7 +294,7 @@ class NekonoverseClient(_BaseClient):
         elif tl_type == "global":
             statuses = self._get("api/v1/timelines/public", limit=limit)
         else:
-            raise ValueError(f"不明なタイムライン: {tl_type}")
+            raise ValueError(_("error.unknown_timeline", tl_type=tl_type))
         return [self._normalize_note(s) for s in (statuses or [])]
 
     def create_note(self, text, visibility="public", cw=None, reply_id=None, visible_user_ids=None):

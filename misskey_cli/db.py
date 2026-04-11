@@ -23,6 +23,12 @@ class Account(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class AppConfig(Base):
+    __tablename__ = "app_config"
+    key = Column(String, primary_key=True)
+    value = Column(String)
+
+
 _engine = None
 
 

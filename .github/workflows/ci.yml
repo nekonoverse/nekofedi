@@ -24,6 +24,25 @@ jobs:
           print('import ok')
           "
 
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t misskey-cli .
+
+      - name: Run unit tests
+        run: |
+          docker run --rm \
+            -e PYTHONPATH=/app \
+            --entrypoint pytest misskey-cli \
+            tests/test_i18n.py -v
+
+      - name: Verify locales installed
+        run: |
+          docker run --rm --entrypoint locale misskey-cli -a | grep -E '^(en_US|ja_JP|fr_FR)\.utf8$'
+
   e2e:
     runs-on: ubuntu-latest
     steps:

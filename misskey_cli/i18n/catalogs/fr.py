@@ -1,0 +1,95 @@
+"""French catalog. Mirrors the key set of en.py exactly."""
+
+CATALOG = {
+    # ----- App lifecycle -----
+    "app.banner": "Misskey CLI - tapez 'help' pour la liste des commandes, 'quit' pour quitter",
+    "app.bye": "à bientôt",
+
+    # ----- Command help (description only; the syntax line is implicit) -----
+    "cmd.help.login": "Se connecter à une instance",
+    "cmd.help.account": "Lister / changer de compte",
+    "cmd.help.logout": "Supprimer le compte actif",
+    "cmd.help.i": "Afficher votre profil",
+    "cmd.help.tl": "Afficher un fil",
+    "cmd.help.note": "Composer une note dans l'éditeur",
+    "cmd.help.note_text": "Poster une note depuis la ligne de commande",
+    "cmd.help.default_visibility": "Afficher / définir la visibilité par défaut",
+    "cmd.help.default_timeline": "Afficher / définir le fil par défaut",
+    "cmd.help.reply": "Composer une réponse dans l'éditeur",
+    "cmd.help.reply_text": "Répondre depuis la ligne de commande",
+    "cmd.help.renote": "Republier une note",
+    "cmd.help.react": "Réagir à une note",
+    "cmd.help.notif": "Lister les notifications",
+    "cmd.help.lang": "Afficher / changer la langue d'affichage",
+    "cmd.help.help": "Afficher cette liste de commandes",
+    "cmd.help.quit": "Quitter",
+
+    # ----- Usage hints -----
+    "usage.login": "Utilisation : login <host>  ex. login misskey.caligula-sea.net",
+    "usage.note_text": "Utilisation : note_text [visibility] <text>",
+    "usage.account_use": "Utilisation : account use @user@host  (l'hôte seul suffit s'il n'y a qu'un compte par hôte)",
+    "usage.reply": "Utilisation : reply <note_id> [visibility]",
+    "usage.reply_text": "Utilisation : reply_text <note_id> [visibility] <text>",
+    "usage.renote": "Utilisation : renote <note_id>",
+    "usage.react": "Utilisation : react <note_id> <emoji>",
+
+    # ----- Status / confirmation -----
+    "status.login_active_as": "Connecté en tant que {display_name}",
+    "status.detected": "Détecté : {software}",
+    "status.login_success": "Connexion réussie : {display_name}",
+    "status.switched": "Basculé vers : {who}",
+    "status.logout": "Déconnecté : {host}",
+    "status.profile_counts": "  notes : {notes}  abonnements : {following}  abonnés : {followers}",
+    "status.posted": "Publié [{id}] ({visibility})",
+    "status.replied": "Réponse envoyée [{id}] ({visibility})",
+    "status.renoted": "Republié",
+    "status.reacted": "Réaction envoyée {reaction}",
+    "status.default_visibility_current": "Valeur par défaut actuelle : {value}",
+    "status.default_visibility_set": "Visibilité par défaut définie sur '{value}'",
+    "status.default_timeline_current": "Valeur par défaut actuelle : {value}",
+    "status.default_timeline_set": "Fil par défaut défini sur '{value}'",
+    "status.lang_current": "Langue actuelle : {code}  (disponibles : {codes})",
+    "status.lang_set": "Langue définie sur '{code}'",
+
+    # ----- Errors -----
+    "error.generic": "Erreur : {message}",
+    "error.not_logged_in": "Exécutez d'abord 'login <host>'.",
+    "error.not_logged_in_short": "Non connecté.",
+    "error.token_invalid_relogin": "Le jeton enregistré est invalide. Lancez 'login' pour vous réauthentifier.",
+    "error.token_invalid": "Le jeton enregistré est invalide.",
+    "error.detect_failed": "Impossible de récupérer les informations du serveur : {host}",
+    "error.detect_failed_hint": "(nodeinfo n'est pas accessible ; vérifiez le nom d'hôte)",
+    "error.unsupported_server": "Ce serveur n'est pas pris en charge ({software}). Seuls MiAuth (famille Misskey) et Nekonoverse sont pris en charge.",
+    "error.user_info_failed": "Échec de la récupération des informations utilisateur",
+    "error.login_failed": "Échec de la connexion : {message}",
+    "error.account_not_found": "Compte introuvable : {target}",
+    "error.account_ambiguous": "Plusieurs correspondances. Précisez '@user@host' : {target}",
+    "error.unknown_subcommand": "Sous-commande inconnue : {sub}",
+    "error.invalid_choice": "Valeur invalide. Choix : {choices}",
+    "error.fetch_parent_failed": "Échec de la récupération de la note parente : {message}",
+    "error.invalid_visibility": "Visibilité invalide : {value}",
+    "error.unknown_command": "Commande inconnue : {cmd} (tapez 'help' pour la liste)",
+    "error.unknown_timeline": "Fil inconnu : {tl_type}",
+    "error.unknown_lang": "Langue inconnue : {code}  (disponibles : {codes})",
+
+    # ----- Empty results -----
+    "empty.timeline": "Aucune note.",
+    "empty.note": "Les notes vides ne sont pas publiées.",
+    "empty.reply": "Les réponses vides ne sont pas envoyées.",
+    "empty.notifications": "Aucune notification.",
+    "empty.accounts": "Aucun compte. Lancez 'login <host>' pour vous connecter.",
+
+    # ----- Editor hints -----
+    "editor.emoji_hint_nvim": "Complétion d'emoji : tapez ':' en mode insertion pour des suggestions (correspondance partielle)",
+    "editor.emoji_hint_vim": "Complétion d'emoji : <C-n> / <C-p> ou <C-x><C-k>",
+
+    # ----- Auth (api.py) -----
+    "auth.open_browser": "Ouvrez l'URL suivante dans votre navigateur pour vous authentifier :\n{url}",
+    "auth.press_enter": "\nAppuyez sur Entrée une fois l'authentification terminée...",
+    "auth.miauth_failed": "Échec de l'authentification",
+    "auth.paste_code": "\nCollez le code d'autorisation puis Entrée : ",
+    "auth.code_missing": "Aucun code d'autorisation saisi",
+
+    # ----- Meta -----
+    "meta.account_active": "(actif)",
+}

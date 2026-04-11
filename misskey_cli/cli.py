@@ -16,7 +16,8 @@ from .api import (
     make_client,
     parse_host_arg,
 )
-from . import config
+from . import config, i18n
+from .i18n import _
 
 HISTORY_FILE = str(config.CONFIG_DIR / "history")
 
@@ -29,24 +30,26 @@ def _narrower_visibility(a, b):
     return a if VISIBILITY_RANK.get(a, 0) >= VISIBILITY_RANK.get(b, 0) else b
 TL_TYPES = ("home", "local", "hybrid", "global")
 
+# Map command name → catalog key holding its description.
 COMMANDS = {
-    "login": "login <host> - インスタンスにログイン",
-    "account": "account [use <host>] - アカウント一覧 / 切替",
-    "logout": "アクティブなアカウントを削除",
-    "i": "自分のプロフィール表示",
-    "tl": "tl [home|local|hybrid|global] [件数] - タイムライン表示",
-    "note": "note [visibility] - nvim でノート作成",
-    "note_text": "note_text [visibility] <text> - テキスト直接指定でノート投稿",
-    "default_visibility": "default_visibility [visibility] - デフォルト公開範囲",
-    "default_timeline": "default_timeline [home|local|hybrid|global] - デフォルトTL",
-    "reply": "reply <note_id> [visibility] - エディタでリプライ作成",
-    "reply_text": "reply_text <note_id> [visibility] <text> - テキスト直接指定でリプライ",
-    "renote": "renote <note_id> - リノート",
-    "react": "react <note_id> <emoji> - リアクション",
-    "notif": "notif [件数] - 通知一覧",
-    "help": "コマンド一覧を表示",
-    "quit": "終了",
-    "exit": "終了",
+    "login": "cmd.help.login",
+    "account": "cmd.help.account",
+    "logout": "cmd.help.logout",
+    "i": "cmd.help.i",
+    "tl": "cmd.help.tl",
+    "note": "cmd.help.note",
+    "note_text": "cmd.help.note_text",
+    "default_visibility": "cmd.help.default_visibility",
+    "default_timeline": "cmd.help.default_timeline",
+    "reply": "cmd.help.reply",
+    "reply_text": "cmd.help.reply_text",
+    "renote": "cmd.help.renote",
+    "react": "cmd.help.react",
+    "notif": "cmd.help.notif",
+    "lang": "cmd.help.lang",
+    "help": "cmd.help.help",
+    "quit": "cmd.help.quit",
+    "exit": "cmd.help.quit",
 }
 
 
@@ -214,9 +217,9 @@ class MisskeyCompleter(Completer):
         if not parts or (len(parts) == 1 and not text.endswith(" ")):
             # Completing command name
             word = parts[0] if parts else ""
-            for cmd_name, desc in COMMANDS.items():
+            for cmd_name, desc_key in COMMANDS.items():
                 if cmd_name.startswith(word):
-                    yield Completion(cmd_name, start_position=-len(word), display_meta=desc)
+                    yield Completion(cmd_name, start_position=-len(word), display_meta=_(desc_key))
             return
 
         cmd = parts[0]
@@ -273,7 +276,7 @@ class MisskeyCompleter(Completer):
                     else:
                         acct = a["host"]
                     if acct.startswith(current):
-                        meta = "(active)" if a["active"] else ""
+                        meta = _("meta.account_active") if a["active"] else ""
                         yield Completion(acct, start_position=-len(current), display_meta=meta)
 
 
@@ -289,9 +292,10 @@ class MisskeyCLI:
                 me = self.client.i()
                 self.username = me["username"]
                 self.user_id = me["id"]
-                print(f"{me.get('name') or me['username']} としてログイン中")
+                display = me.get("name") or me["username"]
+                print(_("status.login_active_as", display_name=display))
             except Exception:
-                print("保存済みトークンが無効です。'login' で再認証してください。")
+                print(_("error.token_invalid_relogin"))
                 self.client.token = None
 
         config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -334,7 +338,7 @@ class MisskeyCLI:
 
     def _require_login(self):
         if not self.client.logged_in:
-            print("先に 'login <host>' でログインしてください。")
+            print(_("error.not_logged_in"))
             return False
         return True
 
@@ -358,7 +362,7 @@ class MisskeyCLI:
                     lua_path = lf.name
                 extra_files.append(lua_path)
                 cmd += ["-c", f"luafile {lua_path}"]
-                print("絵文字補完: 挿入モードで `:` を入力すると候補が出ます (部分一致)")
+                print(_("editor.emoji_hint_nvim"))
             elif editor_bin == "vim" and shortcodes:
                 with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as df:
                     for name in shortcodes:
@@ -370,7 +374,7 @@ class MisskeyCLI:
                     "-c", f"set dictionary={dict_path}",
                     "-c", "set complete+=k",
                 ]
-                print("絵文字補完: <C-n> / <C-p> または <C-x><C-k>")
+                print(_("editor.emoji_hint_vim"))
 
             # If initial text was provided, jump cursor to end and start insert mode
             if initial and editor_bin in ("nvim", "vim"):
@@ -393,29 +397,29 @@ class MisskeyCLI:
         return config.get_default_visibility()
 
     def cmd_help(self, arg):
-        for name, desc in COMMANDS.items():
-            print(f"  {name:22s} {desc}")
+        for name, key in COMMANDS.items():
+            print(f"  {name:22s} {_(key)}")
 
     def cmd_login(self, arg):
         if not arg.strip():
-            print("使い方: login <host>  例: login misskey.caligula-sea.net")
+            print(_("usage.login"))
             return
         host, scheme = parse_host_arg(arg)
         software = detect_software(host, scheme=scheme)
         if software is None:
-            print(f"サーバー情報を取得できませんでした: {host}")
-            print("(nodeinfo にアクセスできません。ホスト名を確認してください)")
+            print(_("error.detect_failed", host=host))
+            print(_("error.detect_failed_hint"))
             return
-        print(f"検出: {software}")
+        print(_("status.detected", software=software))
         if software not in MIAUTH_SOFTWARE and software != NEKONOVERSE_SOFTWARE:
-            print(f"このサーバーは未対応です ({software})。MiAuth 対応 (Misskey 系) と Nekonoverse のみサポートしています。")
+            print(_("error.unsupported_server", software=software))
             return
         client = make_client(software=software, scheme=scheme)
         try:
             user = client.login(host)
             username = user.get("username")
             if not username:
-                raise RuntimeError("ユーザー情報の取得に失敗しました")
+                raise RuntimeError(_("error.user_info_failed"))
             config.save_credentials(
                 host,
                 client.token,
@@ -428,9 +432,10 @@ class MisskeyCLI:
             self.user_id = user.get("id")
             self._emoji_cache = None
             self._note_meta = []
-            print(f"ログイン成功: {user.get('name') or username}")
+            display = user.get("name") or username
+            print(_("status.login_success", display_name=display))
         except Exception as e:
-            print(f"ログイン失敗: {e}")
+            print(_("error.login_failed", message=str(e)))
 
     def _reload_client(self):
         self.client = make_client()
@@ -444,7 +449,7 @@ class MisskeyCLI:
                 self.username = me["username"]
                 self.user_id = me["id"]
             except Exception:
-                print("保存済みトークンが無効です。")
+                print(_("error.token_invalid"))
                 self.client.token = None
 
     def cmd_account(self, arg):
@@ -452,7 +457,7 @@ class MisskeyCLI:
         if not parts:
             accounts = config.list_accounts()
             if not accounts:
-                print("アカウントがありません。'login <host>' でログインしてください。")
+                print(_("empty.accounts"))
                 return
             for a in accounts:
                 mark = "*" if a["active"] else " "
@@ -468,30 +473,30 @@ class MisskeyCLI:
         sub = parts[0]
         if sub == "use":
             if len(parts) < 2:
-                print("使い方: account use @user@host  (1ホスト1アカウントなら host のみでも可)")
+                print(_("usage.account_use"))
                 return
             target = parts[1]
             result = config.switch_account(target)
             if result == "not_found":
-                print(f"アカウントが見つかりません: {target}")
+                print(_("error.account_not_found", target=target))
                 return
             if result == "ambiguous":
-                print(f"複数該当します。'@user@host' で指定してください: {target}")
+                print(_("error.account_ambiguous", target=target))
                 return
             self._reload_client()
             who = f"@{self.username}@{self.client.host}" if self.username else target
-            print(f"切替: {who}")
+            print(_("status.switched", who=who))
         else:
-            print(f"不明なサブコマンド: {sub}")
+            print(_("error.unknown_subcommand", sub=sub))
 
     def cmd_logout(self, arg):
         if not self.client.logged_in:
-            print("ログインしていません。")
+            print(_("error.not_logged_in_short"))
             return
         host = self.client.host
         config.delete_active_account()
         self._reload_client()
-        print(f"ログアウト: {host}")
+        print(_("status.logout", host=host))
 
     def cmd_i(self, arg):
         if not self._require_login():
@@ -502,9 +507,14 @@ class MisskeyCLI:
             print(f"  {name} (@{me['username']})")
             if me.get("description"):
                 print(f"  {me['description']}")
-            print(f"  notes: {me.get('notesCount', 0)}  following: {me.get('followingCount', 0)}  followers: {me.get('followersCount', 0)}")
+            print(_(
+                "status.profile_counts",
+                notes=me.get("notesCount", 0),
+                following=me.get("followingCount", 0),
+                followers=me.get("followersCount", 0),
+            ))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_tl(self, arg):
         if not self._require_login():
@@ -515,14 +525,14 @@ class MisskeyCLI:
         try:
             notes = self.client.timeline(tl_type, limit)
             if not notes:
-                print("ノートがありません。")
+                print(_("empty.timeline"))
                 return
             self._collect_notes(notes)
             for note in reversed(notes):
                 print_formatted_text(FormattedText(_format_note(note)))
                 print()
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_note(self, arg):
         if not self._require_login():
@@ -530,21 +540,21 @@ class MisskeyCLI:
         visibility = self._resolve_visibility(arg.strip())
         text = self._edit_text()
         if not text:
-            print("空のノートは投稿しません。")
+            print(_("empty.note"))
             return
         try:
             result = self.client.create_note(text, visibility=visibility)
             note = result["createdNote"]
-            print(f"投稿しました [{note['id']}] ({visibility})")
+            print(_("status.posted", id=note["id"], visibility=visibility))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_note_text(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split(None, 1)
         if not parts:
-            print("使い方: note_text [visibility] <text>")
+            print(_("usage.note_text"))
             return
         if parts[0] in VISIBILITIES:
             visibility = parts[0]
@@ -553,47 +563,59 @@ class MisskeyCLI:
             visibility = config.get_default_visibility()
             text = arg.strip()
         if not text:
-            print("使い方: note_text [visibility] <text>")
+            print(_("usage.note_text"))
             return
         try:
             result = self.client.create_note(text, visibility=visibility)
             note = result["createdNote"]
-            print(f"投稿しました [{note['id']}] ({visibility})")
+            print(_("status.posted", id=note["id"], visibility=visibility))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_default_visibility(self, arg):
         v = arg.strip()
         if not v:
-            print(f"現在のデフォルト: {config.get_default_visibility()}")
+            print(_("status.default_visibility_current", value=config.get_default_visibility()))
             return
         if v not in VISIBILITIES:
-            print(f"不正な値です。選択肢: {', '.join(VISIBILITIES)}")
+            print(_("error.invalid_choice", choices=", ".join(VISIBILITIES)))
             return
         if not self._require_login():
             return
         config.set_default_visibility(v)
-        print(f"デフォルト公開範囲を '{v}' に設定しました")
+        print(_("status.default_visibility_set", value=v))
 
     def cmd_default_timeline(self, arg):
         v = arg.strip()
         if not v:
-            print(f"現在のデフォルト: {config.get_default_timeline()}")
+            print(_("status.default_timeline_current", value=config.get_default_timeline()))
             return
         if v not in TL_TYPES:
-            print(f"不正な値です。選択肢: {', '.join(TL_TYPES)}")
+            print(_("error.invalid_choice", choices=", ".join(TL_TYPES)))
             return
         if not self._require_login():
             return
         config.set_default_timeline(v)
-        print(f"デフォルトタイムラインを '{v}' に設定しました")
+        print(_("status.default_timeline_set", value=v))
+
+    def cmd_lang(self, arg):
+        code = arg.strip()
+        codes = ", ".join(i18n.SUPPORTED_LANGS)
+        if not code:
+            print(_("status.lang_current", code=i18n.get_language(), codes=codes))
+            return
+        if code not in i18n.SUPPORTED_LANGS:
+            print(_("error.unknown_lang", code=code, codes=codes))
+            return
+        i18n.set_language(code)
+        print(_("status.lang_set", code=code))
 
     def _do_reply(self, note_id, explicit_visibility, text):
         """Common reply logic. If text is None, opens editor with mention pre-filled."""
         try:
             original = self.client.show_note(note_id)
         except Exception as e:
-            print(f"元ノート取得失敗: {e}")
+            print(_("error.fetch_parent_failed", message=str(e)))
             return
 
         orig_visibility = original.get("visibility", "public")
@@ -616,7 +638,7 @@ class MisskeyCLI:
             initial = f"{mention} " if mention else ""
             text = self._edit_text(initial=initial)
             if not text:
-                print("空のリプライは送信しません。")
+                print(_("empty.reply"))
                 return
             final_text = text
         else:
@@ -635,21 +657,21 @@ class MisskeyCLI:
         try:
             result = self.client.create_note(final_text, **kwargs)
             note = result["createdNote"]
-            print(f"リプライしました [{note['id']}] ({visibility})")
+            print(_("status.replied", id=note["id"], visibility=visibility))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_reply(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split()
         if not parts or len(parts) > 2:
-            print("使い方: reply <note_id> [visibility]")
+            print(_("usage.reply"))
             return
         note_id = parts[0]
         explicit_vis = parts[1] if len(parts) > 1 else None
         if explicit_vis and explicit_vis not in VISIBILITIES:
-            print(f"不正な visibility: {explicit_vis}")
+            print(_("error.invalid_visibility", value=explicit_vis))
             return
         self._do_reply(note_id, explicit_vis, text=None)
 
@@ -658,12 +680,12 @@ class MisskeyCLI:
             return
         parts = arg.strip().split(None, 2)
         if len(parts) < 2:
-            print("使い方: reply_text <note_id> [visibility] <text>")
+            print(_("usage.reply_text"))
             return
         note_id = parts[0]
         if parts[1] in VISIBILITIES:
             if len(parts) < 3:
-                print("使い方: reply_text <note_id> [visibility] <text>")
+                print(_("usage.reply_text"))
                 return
             explicit_vis = parts[1]
             text = parts[2]
@@ -677,29 +699,29 @@ class MisskeyCLI:
             return
         note_id = arg.strip()
         if not note_id:
-            print("使い方: renote <note_id>")
+            print(_("usage.renote"))
             return
         try:
             self.client.renote(note_id)
-            print("リノートしました")
+            print(_("status.renoted"))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_react(self, arg):
         if not self._require_login():
             return
         parts = arg.strip().split(None, 1)
         if len(parts) < 2:
-            print("使い方: react <note_id> <emoji>")
+            print(_("usage.react"))
             return
         note_id, reaction = parts
         if not reaction.startswith(":"):
             reaction = f":{reaction}:"
         try:
             self.client.react(note_id, reaction)
-            print(f"リアクションしました {reaction}")
+            print(_("status.reacted", reaction=reaction))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmd_notif(self, arg):
         if not self._require_login():
@@ -708,7 +730,7 @@ class MisskeyCLI:
         try:
             notifs = self.client.notifications(limit)
             if not notifs:
-                print("通知はありません。")
+                print(_("empty.notifications"))
                 return
             notif_notes = [n["note"] for n in notifs if n.get("note", {}).get("id")]
             if notif_notes:
@@ -716,10 +738,10 @@ class MisskeyCLI:
             for n in notifs:
                 print_formatted_text(FormattedText(_format_notification(n)))
         except Exception as e:
-            print(f"エラー: {e}")
+            print(_("error.generic", message=str(e)))
 
     def cmdloop(self):
-        print("Misskey CLI - 'help' でコマンド一覧、'quit' で終了")
+        print(_("app.banner"))
         dispatch = {
             "login": self.cmd_login,
             "account": self.cmd_account,
@@ -735,6 +757,7 @@ class MisskeyCLI:
             "renote": self.cmd_renote,
             "react": self.cmd_react,
             "notif": self.cmd_notif,
+            "lang": self.cmd_lang,
             "help": self.cmd_help,
             "quit": None,
             "exit": None,
@@ -747,7 +770,7 @@ class MisskeyCLI:
                 print()
                 continue
             except EOFError:
-                print("bye")
+                print(_("app.bye"))
                 break
 
             if not text:
@@ -758,11 +781,11 @@ class MisskeyCLI:
             arg = parts[1] if len(parts) > 1 else ""
 
             if cmd_name in ("quit", "exit"):
-                print("bye")
+                print(_("app.bye"))
                 break
 
             handler = dispatch.get(cmd_name)
             if handler:
                 handler(arg)
             else:
-                print(f"不明なコマンド: {cmd_name} ('help' で一覧表示)")
+                print(_("error.unknown_command", cmd=cmd_name))

@@ -14,11 +14,13 @@ mkdir -p ~/.config/misskey-cli
 ```sh
 docker run -it --user $(id -u):$(id -g) \
   -e TZ=Asia/Tokyo \
+  -e LANG=ja_JP.UTF-8 \
   -v ~/.config/misskey-cli:/home/user/.config/misskey-cli \
   ghcr.io/nananek/misskey-cli:latest
 ```
 
 `TZ` 環境変数でタイムラインの日時表示タイムゾーンを指定できます (省略時は UTC)。
+`LANG` で表示言語の OS ロケールを指定できます (デフォルトは英語、上記は日本語起動の例)。
 
 ## 対応サーバー
 
@@ -47,6 +49,7 @@ docker run -it --user $(id -u):$(id -g) \
 | `notif [件数]` | 通知一覧 |
 | `default_visibility [visibility]` | デフォルト公開範囲の設定/確認 (アクティブアカウントごと) |
 | `default_timeline [home\|local\|hybrid\|global]` | デフォルトタイムラインの設定/確認 (アクティブアカウントごと) |
+| `lang [en\|ja\|fr]` | 表示言語の確認 / 変更 (グローバル設定) |
 | `help` | コマンド一覧を表示 |
 | `quit` / `exit` | 終了 (C-d でも終了) |
 
@@ -84,6 +87,10 @@ vim の場合は dictionary completion として読み込まれるので、`<C-n
 `~/.config/misskey-cli/` に SQLite データベースとコマンド履歴が保存されます。
 スキーマ変更は Alembic マイグレーションで管理されており、起動時に自動適用されます。
 トークンは初回ログイン後に永続化され、次回以降は自動ログインします。
+
+表示言語は `lang` コマンドで切り替え可能 (en / ja / fr、デフォルトは en)。
+起動時の決定順序: `MISSKEY_CLI_LANG` → DB 保存値 → `LANG` の先頭2文字 → en
+Docker イメージには `en_US.UTF-8` / `ja_JP.UTF-8` / `fr_FR.UTF-8` ロケールが入っているので、`-e LANG=ja_JP.UTF-8` 等で OS ロケールごと切替できます。
 
 ## ライセンス
 

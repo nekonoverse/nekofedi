@@ -1,5 +1,9 @@
 FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends neovim tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        neovim tzdata locales \
+ && sed -i 's/^# *\(en_US.UTF-8\)/\1/; s/^# *\(ja_JP.UTF-8\)/\1/; s/^# *\(fr_FR.UTF-8\)/\1/' /etc/locale.gen \
+ && locale-gen \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
