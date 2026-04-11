@@ -121,6 +121,28 @@ def set_default_timeline(timeline):
         return True
 
 
+def get_active_list_id():
+    """Return the active account's currently selected list id, or None."""
+    acct = get_active_account()
+    return acct.active_list_id if acct else None
+
+
+def set_active_list_id(list_id):
+    """Persist the selected list id on the active account.
+
+    Pass ``None`` to clear. Returns True on success, False if no account
+    is active.
+    """
+    from .db import get_session, Account
+    with get_session() as s:
+        acct = s.query(Account).filter_by(active=True).first()
+        if not acct:
+            return False
+        acct.active_list_id = list_id
+        s.commit()
+        return True
+
+
 def get_app_config(key, default=None):
     """Read a value from the global app_config key/value table."""
     from .db import get_session, AppConfig

@@ -106,3 +106,39 @@ def test_react(client):
 def test_notifications(client):
     notifs = client.notifications(limit=5)
     assert isinstance(notifs, list)
+
+
+# ---------- Lists / list timeline ----------
+
+
+def _ensure_list(client, name):
+    """Create a user list (or return the existing one) and return its id."""
+    existing = client._post("users/lists/list") or []
+    for lst in existing:
+        if lst.get("name") == name:
+            return lst["id"]
+    created = client._post("users/lists/create", name=name)
+    return created["id"]
+
+
+def test_lists_returns_id_name_pairs(client):
+    _ensure_list(client, "misskey-e2e-list")
+    lists = client.lists()
+    assert isinstance(lists, list)
+    names = [lst.get("name") for lst in lists]
+    assert "misskey-e2e-list" in names
+    for lst in lists:
+        assert lst.get("id")
+        assert "name" in lst
+
+
+def test_list_timeline_returns_list(client):
+    list_id = _ensure_list(client, "misskey-e2e-list-tl")
+    notes = client.timeline("list", limit=5, list_id=list_id)
+    # Misskey returns the raw array; an empty list is OK (no members yet).
+    assert isinstance(notes, list)
+
+
+def test_list_timeline_without_list_id_raises(client):
+    with pytest.raises(ValueError):
+        client.timeline("list", limit=5)

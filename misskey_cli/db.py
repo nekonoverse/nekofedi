@@ -20,6 +20,7 @@ class Account(Base):
     scheme = Column(String)
     default_visibility = Column(String, nullable=False, default="public", server_default="public")
     default_timeline = Column(String, nullable=False, default="home", server_default="home")
+    active_list_id = Column(String)
     created_at = Column(DateTime, server_default=func.now())
 
 

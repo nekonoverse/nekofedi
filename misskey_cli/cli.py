@@ -28,7 +28,7 @@ VISIBILITY_RANK = {"public": 0, "home": 1, "followers": 2, "specified": 3}
 
 def _narrower_visibility(a, b):
     return a if VISIBILITY_RANK.get(a, 0) >= VISIBILITY_RANK.get(b, 0) else b
-TL_TYPES = ("home", "local", "hybrid", "global")
+TL_TYPES = ("home", "local", "hybrid", "global", "list")
 
 # Map command name → catalog key holding its description.
 COMMANDS = {
@@ -46,6 +46,7 @@ COMMANDS = {
     "renote": "cmd.help.renote",
     "react": "cmd.help.react",
     "notif": "cmd.help.notif",
+    "list": "cmd.help.list",
     "lang": "cmd.help.lang",
     "help": "cmd.help.help",
     "quit": "cmd.help.quit",
@@ -206,9 +207,10 @@ def _note_summary(note):
 
 
 class MisskeyCompleter(Completer):
-    def __init__(self, get_emoji_names, get_note_meta):
+    def __init__(self, get_emoji_names, get_note_meta, get_lists):
         self._get_emoji_names = get_emoji_names
         self._get_note_meta = get_note_meta
+        self._get_lists = get_lists
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -279,12 +281,26 @@ class MisskeyCompleter(Completer):
                         meta = _("meta.account_active") if a["active"] else ""
                         yield Completion(acct, start_position=-len(current), display_meta=meta)
 
+        elif cmd == "list":
+            if arg_pos == 1:
+                for sub in ("use",):
+                    if sub.startswith(current):
+                        yield Completion(sub, start_position=-len(current))
+            elif arg_pos == 2 and len(parts) >= 2 and parts[1] == "use":
+                active_id = config.get_active_list_id()
+                for lst in self._get_lists():
+                    name = lst.get("name") or ""
+                    if name.startswith(current):
+                        meta = _("meta.account_active") if lst["id"] == active_id else f"[{lst['id']}]"
+                        yield Completion(name, start_position=-len(current), display_meta=meta)
+
 
 class MisskeyCLI:
     def __init__(self):
         self.username = None
         self.user_id = None
         self._emoji_cache = None
+        self._lists_cache = None
         self._note_meta = []
         self.client = make_client()
         if self.client.logged_in:
@@ -301,7 +317,12 @@ class MisskeyCLI:
         config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self.session = PromptSession(
             history=FileHistory(HISTORY_FILE),
-            completer=MisskeyCompleter(self._get_emoji_names, self._get_note_meta),
+            completer=MisskeyCompleter(
+                self._get_emoji_names, self._get_note_meta, self._get_lists
+            ),
+            # Run completions off the UI thread so a first-time `list use` /
+            # emoji lookup doesn't block the REPL on a network round-trip.
+            complete_in_thread=True,
         )
 
     def _get_emoji_names(self):
@@ -312,6 +333,51 @@ class MisskeyCLI:
             except Exception:
                 self._emoji_cache = []
         return self._emoji_cache or []
+
+    def _get_lists(self):
+        """Return cached ``[{id, name}]`` lists for completion.
+
+        Swallows errors and returns ``[]`` so the completer stays quiet on
+        network hiccups. Callers that need to surface errors should use
+        :meth:`_refresh_lists` instead.
+        """
+        if self._lists_cache is None and self.client.logged_in:
+            try:
+                self._lists_cache = self.client.lists() or []
+            except Exception:
+                self._lists_cache = []
+        return self._lists_cache or []
+
+    def _refresh_lists(self):
+        """Fetch lists from the server and update the completer cache.
+
+        Raises on network/API errors so the caller can surface them.
+        """
+        lists = self.client.lists() or []
+        self._lists_cache = lists
+        return lists
+
+    def _resolve_list(self, target):
+        """Resolve a name-or-id string against the lists cache.
+
+        Returns ``(list_dict | None, status)`` where status is one of
+        ``'ok'`` / ``'not_found'`` / ``'ambiguous'``, matching the convention
+        of :func:`config.switch_account`.
+        """
+        if not target:
+            return None, "not_found"
+        lists = self._get_lists()
+        matches_by_name = []
+        for lst in lists:
+            if lst["id"] == target:
+                return lst, "ok"
+            if (lst.get("name") or "") == target:
+                matches_by_name.append(lst)
+        if len(matches_by_name) == 1:
+            return matches_by_name[0], "ok"
+        if len(matches_by_name) > 1:
+            return None, "ambiguous"
+        return None, "not_found"
 
     def _get_note_meta(self):
         return self._note_meta
@@ -431,6 +497,7 @@ class MisskeyCLI:
             self.username = username
             self.user_id = user.get("id")
             self._emoji_cache = None
+            self._lists_cache = None
             self._note_meta = []
             display = user.get("name") or username
             print(_("status.login_success", display_name=display))
@@ -442,6 +509,7 @@ class MisskeyCLI:
         self.username = None
         self.user_id = None
         self._emoji_cache = None
+        self._lists_cache = None
         self._note_meta = []
         if self.client.logged_in:
             try:
@@ -522,8 +590,15 @@ class MisskeyCLI:
         parts = arg.strip().split()
         tl_type = parts[0] if parts else config.get_default_timeline()
         limit = int(parts[1]) if len(parts) > 1 else 10
+        kwargs = {}
+        if tl_type == "list":
+            list_id = config.get_active_list_id()
+            if not list_id:
+                print(_("error.no_active_list"))
+                return
+            kwargs["list_id"] = list_id
         try:
-            notes = self.client.timeline(tl_type, limit)
+            notes = self.client.timeline(tl_type, limit, **kwargs)
             if not notes:
                 print(_("empty.timeline"))
                 return
@@ -595,8 +670,60 @@ class MisskeyCLI:
             return
         if not self._require_login():
             return
+        if v == "list" and not config.get_active_list_id():
+            print(_("error.default_timeline_list_requires_active"))
+            return
         config.set_default_timeline(v)
         print(_("status.default_timeline_set", value=v))
+
+    def cmd_list(self, arg):
+        if not self._require_login():
+            return
+        parts = arg.strip().split()
+        if not parts:
+            # Show all lists with active marker. Always hit the server so the
+            # user sees the authoritative state, not a stale cache.
+            try:
+                lists = self._refresh_lists()
+            except Exception as e:
+                print(_("error.generic", message=str(e)))
+                return
+            if not lists:
+                print(_("empty.lists"))
+                return
+            active_id = config.get_active_list_id()
+            for lst in lists:
+                mark = "*" if lst["id"] == active_id else " "
+                name = lst.get("name") or "(unnamed)"
+                print(f"  {mark} {name}  [{lst['id']}]")
+            return
+
+        sub = parts[0]
+        if sub == "use":
+            if len(parts) < 2:
+                print(_("usage.list_use"))
+                return
+            target = parts[1]
+            lst, status = self._resolve_list(target)
+            if status == "not_found":
+                # Cache miss — refetch once in case the user just created
+                # the list on the server, then retry the resolve.
+                try:
+                    self._refresh_lists()
+                except Exception as e:
+                    print(_("error.generic", message=str(e)))
+                    return
+                lst, status = self._resolve_list(target)
+            if status == "not_found":
+                print(_("error.list_not_found", target=target))
+                return
+            if status == "ambiguous":
+                print(_("error.list_ambiguous", target=target))
+                return
+            config.set_active_list_id(lst["id"])
+            print(_("status.list_active_set", name=lst.get("name") or "(unnamed)", id=lst["id"]))
+        else:
+            print(_("error.unknown_subcommand", sub=sub))
 
     def cmd_lang(self, arg):
         code = arg.strip()
@@ -760,6 +887,7 @@ class MisskeyCLI:
             "renote": self.cmd_renote,
             "react": self.cmd_react,
             "notif": self.cmd_notif,
+            "list": self.cmd_list,
             "lang": self.cmd_lang,
             "help": self.cmd_help,
             "quit": None,

@@ -30,6 +30,22 @@ docker run -it --user $(id -u):$(id -g) \
 `login <host>` 実行時に nodeinfo からサーバー種別を自動判別します。
 ローカル検証用に `login http://localhost:8000` のように `http://` / `https://` プレフィックスを付けることもできます (省略時は https)。
 
+### リストタイムライン
+
+サーバー上で作成済みのユーザーリストを使ってタイムラインを取得できます:
+
+1. `list` でアカウントのリスト一覧を表示
+2. `list use <name_or_id>` でアクティブリストを切り替え
+3. `tl list` でそのリストのタイムラインを表示
+4. `default_timeline list` でデフォルトを「アクティブリスト」に設定 (事前に `list use` 必須)
+
+実際に叩くエンドポイントはサーバー種別で自動切替されます:
+
+- **Misskey 系**: `POST api/notes/user-list-timeline` (`listId` 指定)
+- **Mastodon / Fedibird / Pleroma / Akkoma / GoToSocial / Hometown / Nekonoverse**: `GET api/v1/timelines/list/:list_id`
+
+Mastodon 家系はリスト名を `title` で返しますが CLI 側で `name` に正規化されます。
+
 ### リアクションの挙動
 
 `react` コマンドはサーバー種別に応じて自動でエンドポイントを切り替えます:
@@ -49,7 +65,7 @@ docker run -it --user $(id -u):$(id -g) \
 | `account use @user@host` | アクティブアカウントを切り替え (1ホスト1アカウントなら host のみでも可) |
 | `logout` | アクティブアカウントを削除 |
 | `i` | 自分のプロフィール表示 |
-| `tl [home\|local\|hybrid\|global] [件数]` | タイムライン表示 |
+| `tl [home\|local\|hybrid\|global\|list] [件数]` | タイムライン表示 (`list` は `list use` で選択中のリスト) |
 | `note [visibility]` | エディタ ($EDITOR, デフォルト nvim) でノートを書いて投稿 |
 | `note_text [visibility] <text>` | テキスト直接指定で投稿 |
 | `reply <note_id> [visibility]` | エディタでリプライ作成 (メンション自動付与) |
@@ -58,7 +74,9 @@ docker run -it --user $(id -u):$(id -g) \
 | `react <note_id> <emoji>` | リアクション (コロン不要、自動付与) |
 | `notif [件数]` | 通知一覧 |
 | `default_visibility [visibility]` | デフォルト公開範囲の設定/確認 (アクティブアカウントごと) |
-| `default_timeline [home\|local\|hybrid\|global]` | デフォルトタイムラインの設定/確認 (アクティブアカウントごと) |
+| `default_timeline [home\|local\|hybrid\|global\|list]` | デフォルトタイムラインの設定/確認 (アクティブアカウントごと) |
+| `list` | リスト一覧を表示 (アクティブなリストに `*`) |
+| `list use <name_or_id>` | アクティブリストを切り替え (`tl list` / `default_timeline list` で使用) |
 | `lang [en\|ja\|fr]` | 表示言語の確認 / 変更 (グローバル設定) |
 | `help` | コマンド一覧を表示 |
 | `quit` / `exit` | 終了 (C-d でも終了) |
@@ -80,6 +98,7 @@ Tab キーでドロップダウン補完が表示されます。
 - `reply` / `renote` / `react` のノートID (直近の tl/notif から取得、新しい順)
 - `react` の絵文字ショートコード (部分一致検索)
 - `account use` のアカウント (`@user@host`、登録済みから)
+- `list use` のリスト名 (ログイン中アカウントのリストから)
 
 `note` でエディタが nvim の場合、挿入モードで `:` を入力するとポップアップが出て、続けてタイプすると部分一致で絞り込まれます (Misskey Web UI 風)。`<C-n>`/`<C-p>` で選択、`<C-y>` で確定。
 vim の場合は dictionary completion として読み込まれるので、`<C-n>` または `<C-x><C-k>` で `:emoji_name:` を補完できます。

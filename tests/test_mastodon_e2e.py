@@ -188,3 +188,33 @@ def test_favourite_notification_is_normalized_to_reaction(bob):
 def test_emojis_returns_list(bob):
     emojis = bob.emojis()
     assert isinstance(emojis, list)
+
+
+# ---------- Lists / list timeline ----------
+
+
+def test_lists_returns_normalized_name(bob, bob_token, ensure_mastodon_list):
+    """Mastodon returns ``title``; MastodonClient.lists() must normalize to ``name``."""
+    ensure_mastodon_list(BASE, bob_token, "mastodon-e2e-list")
+    lists = bob.lists()
+    assert isinstance(lists, list)
+    names = [lst.get("name") for lst in lists]
+    assert "mastodon-e2e-list" in names
+    # Every entry must have both id and name keys.
+    for lst in lists:
+        assert lst.get("id")
+        assert "name" in lst
+
+
+def test_list_timeline_returns_list(bob, bob_token, ensure_mastodon_list):
+    """``timeline('list', list_id=...)`` must hit the list endpoint and return a list."""
+    list_id = ensure_mastodon_list(BASE, bob_token, "mastodon-e2e-list-tl")
+    notes = bob.timeline("list", limit=5, list_id=list_id)
+    # An empty list is fine (bob has no list members yet), but the call must
+    # succeed and return an iterable of normalized notes.
+    assert isinstance(notes, list)
+
+
+def test_list_timeline_without_list_id_raises(bob):
+    with pytest.raises(ValueError):
+        bob.timeline("list", limit=5)

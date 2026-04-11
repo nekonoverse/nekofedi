@@ -20,6 +20,7 @@ CATALOG = {
     "cmd.help.renote": "リノート",
     "cmd.help.react": "リアクション",
     "cmd.help.notif": "通知一覧",
+    "cmd.help.list": "リスト一覧表示 / アクティブリスト切替",
     "cmd.help.lang": "表示言語の確認 / 変更",
     "cmd.help.help": "コマンド一覧を表示",
     "cmd.help.quit": "終了",
@@ -32,6 +33,7 @@ CATALOG = {
     "usage.reply_text": "使い方: reply_text <note_id> [visibility] <text>",
     "usage.renote": "使い方: renote <note_id>",
     "usage.react": "使い方: react <note_id> <emoji>",
+    "usage.list_use": "使い方: list use <name_or_id>",
 
     # ----- Status / confirmation -----
     "status.login_active_as": "{display_name} としてログイン中",
@@ -49,6 +51,8 @@ CATALOG = {
     "status.default_visibility_set": "デフォルト公開範囲を '{value}' に設定しました",
     "status.default_timeline_current": "現在のデフォルト: {value}",
     "status.default_timeline_set": "デフォルトタイムラインを '{value}' に設定しました",
+    "status.list_active_set": "アクティブリスト: {name} [{id}]",
+    "status.list_active_none": "アクティブリスト未設定。'list use <name>' で選択してください。",
     "status.lang_current": "現在の言語: {code}  (選択肢: {codes})",
     "status.lang_set": "言語を '{code}' に設定しました",
 
@@ -71,6 +75,11 @@ CATALOG = {
     "error.invalid_visibility": "不正な visibility: {value}",
     "error.unknown_command": "不明なコマンド: {cmd} ('help' で一覧表示)",
     "error.unknown_timeline": "不明なタイムライン: {tl_type}",
+    "error.list_id_required": "tl_type='list' には list_id が必要です",
+    "error.no_active_list": "アクティブリスト未設定。'list use <name_or_id>' で選択してください。",
+    "error.list_not_found": "リストが見つかりません: {target}",
+    "error.list_ambiguous": "'{target}' に複数該当します。ID で指定してください。",
+    "error.default_timeline_list_requires_active": "先に 'list use <name_or_id>' でアクティブリストを選択してから default_timeline を 'list' に設定してください。",
     "error.unknown_lang": "不明な言語: {code}  (選択肢: {codes})",
 
     # ----- Empty results -----
@@ -79,6 +88,7 @@ CATALOG = {
     "empty.reply": "空のリプライは送信しません。",
     "empty.notifications": "通知はありません。",
     "empty.accounts": "アカウントがありません。'login <host>' でログインしてください。",
+    "empty.lists": "このサーバーにリストがありません。",
 
     # ----- Editor hints -----
     "editor.emoji_hint_nvim": "絵文字補完: 挿入モードで `:` を入力すると候補が出ます (部分一致)",

@@ -20,6 +20,7 @@ CATALOG = {
     "cmd.help.renote": "Republier une note",
     "cmd.help.react": "Réagir à une note",
     "cmd.help.notif": "Lister les notifications",
+    "cmd.help.list": "Afficher les listes / sélectionner la liste active",
     "cmd.help.lang": "Afficher / changer la langue d'affichage",
     "cmd.help.help": "Afficher cette liste de commandes",
     "cmd.help.quit": "Quitter",
@@ -32,6 +33,7 @@ CATALOG = {
     "usage.reply_text": "Utilisation : reply_text <note_id> [visibility] <text>",
     "usage.renote": "Utilisation : renote <note_id>",
     "usage.react": "Utilisation : react <note_id> <emoji>",
+    "usage.list_use": "Utilisation : list use <name_or_id>",
 
     # ----- Status / confirmation -----
     "status.login_active_as": "Connecté en tant que {display_name}",
@@ -49,6 +51,8 @@ CATALOG = {
     "status.default_visibility_set": "Visibilité par défaut définie sur '{value}'",
     "status.default_timeline_current": "Valeur par défaut actuelle : {value}",
     "status.default_timeline_set": "Fil par défaut défini sur '{value}'",
+    "status.list_active_set": "Liste active : {name} [{id}]",
+    "status.list_active_none": "Aucune liste active. Lancez 'list use <name>' pour en sélectionner une.",
     "status.lang_current": "Langue actuelle : {code}  (disponibles : {codes})",
     "status.lang_set": "Langue définie sur '{code}'",
 
@@ -71,6 +75,11 @@ CATALOG = {
     "error.invalid_visibility": "Visibilité invalide : {value}",
     "error.unknown_command": "Commande inconnue : {cmd} (tapez 'help' pour la liste)",
     "error.unknown_timeline": "Fil inconnu : {tl_type}",
+    "error.list_id_required": "list_id est requis pour tl_type='list'",
+    "error.no_active_list": "Aucune liste active. Lancez 'list use <name_or_id>' pour en sélectionner une.",
+    "error.list_not_found": "Liste introuvable : {target}",
+    "error.list_ambiguous": "Plusieurs listes correspondent à '{target}'. Utilisez l'id.",
+    "error.default_timeline_list_requires_active": "Définissez d'abord une liste active ('list use <name_or_id>') avant de mettre default_timeline à 'list'.",
     "error.unknown_lang": "Langue inconnue : {code}  (disponibles : {codes})",
 
     # ----- Empty results -----
@@ -79,6 +88,7 @@ CATALOG = {
     "empty.reply": "Les réponses vides ne sont pas envoyées.",
     "empty.notifications": "Aucune notification.",
     "empty.accounts": "Aucun compte. Lancez 'login <host>' pour vous connecter.",
+    "empty.lists": "Aucune liste sur ce serveur.",
 
     # ----- Editor hints -----
     "editor.emoji_hint_nvim": "Complétion d'emoji : tapez ':' en mode insertion pour des suggestions (correspondance partielle)",

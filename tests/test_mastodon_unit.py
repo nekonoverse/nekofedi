@@ -6,6 +6,7 @@ import pytest
 from misskey_cli.api import (
     MASTODON_SOFTWARE,
     MastodonClient,
+    MisskeyClient,
     NekonoverseClient,
     detect_software,
     make_client,
@@ -368,6 +369,147 @@ class TestMakeClient:
         assert c.software == software
 
     def test_misskey_routes_to_misskey_client(self):
-        from misskey_cli.api import MisskeyClient
         c = make_client(host="x", token="t", software="misskey", scheme="http")
         assert isinstance(c, MisskeyClient)
+
+
+# ---------- lists() ----------
+
+
+class TestMastodonLists:
+    def test_normalizes_title_to_name(self):
+        c = _client("mastodon")
+        with patch("misskey_cli.api.requests.get") as get:
+            get.return_value = MagicMock(
+                status_code=200,
+                content=b"[]",
+                json=lambda: [
+                    {"id": "1", "title": "Friends"},
+                    {"id": "2", "title": "Work"},
+                ],
+            )
+            result = c.lists()
+            get.assert_called_once()
+            url = get.call_args[0][0]
+            assert url == "http://x/api/v1/lists"
+            assert result == [
+                {"id": "1", "name": "Friends"},
+                {"id": "2", "name": "Work"},
+            ]
+
+    def test_skips_entries_without_id(self):
+        c = _client("mastodon")
+        with patch("misskey_cli.api.requests.get") as get:
+            get.return_value = MagicMock(
+                status_code=200,
+                content=b"[]",
+                json=lambda: [
+                    {"title": "Orphan"},
+                    {"id": "3", "title": "Keep"},
+                ],
+            )
+            assert c.lists() == [{"id": "3", "name": "Keep"}]
+
+    def test_empty_response(self):
+        c = _client("fedibird")
+        with patch("misskey_cli.api.requests.get") as get:
+            get.return_value = MagicMock(
+                status_code=200, content=b"[]", json=lambda: []
+            )
+            assert c.lists() == []
+
+
+class TestMisskeyLists:
+    def test_returns_id_name_pairs(self):
+        c = MisskeyClient(host="m.example", token="t", scheme="http")
+        with patch("misskey_cli.api.requests.post") as post:
+            post.return_value = MagicMock(
+                status_code=200,
+                content=b"[]",
+                json=lambda: [
+                    {"id": "abc", "name": "Close Friends"},
+                    {"id": "def", "name": "News"},
+                ],
+            )
+            result = c.lists()
+            url = post.call_args[0][0]
+            assert url == "http://m.example/api/users/lists/list"
+            assert result == [
+                {"id": "abc", "name": "Close Friends"},
+                {"id": "def", "name": "News"},
+            ]
+
+    def test_skips_entries_without_id(self):
+        c = MisskeyClient(host="m.example", token="t", scheme="http")
+        with patch("misskey_cli.api.requests.post") as post:
+            post.return_value = MagicMock(
+                status_code=200,
+                content=b"[]",
+                json=lambda: [
+                    {"name": "Broken"},
+                    {"id": "ok", "name": "Good"},
+                ],
+            )
+            assert c.lists() == [{"id": "ok", "name": "Good"}]
+
+
+# ---------- timeline('list') ----------
+
+
+class TestListTimeline:
+    def test_mastodon_list_timeline_hits_list_endpoint(self):
+        c = _client("mastodon")
+        with patch("misskey_cli.api.requests.get") as get:
+            get.return_value = MagicMock(
+                status_code=200, content=b"[]", json=lambda: []
+            )
+            c.timeline("list", limit=5, list_id="list-1")
+            url = get.call_args[0][0]
+            assert url == "http://x/api/v1/timelines/list/list-1"
+            params = get.call_args.kwargs.get("params") or {}
+            assert params.get("limit") == 5
+
+    @pytest.mark.parametrize(
+        "software", ["mastodon", "fedibird", "pleroma", "akkoma", "nekonoverse"],
+    )
+    def test_mastodon_list_timeline_without_list_id_raises(self, software):
+        c = _client(software)
+        with pytest.raises(ValueError):
+            c.timeline("list", limit=5)
+
+    def test_fedibird_list_timeline_ignores_remote_override(self):
+        """Fedibird's local/remote rewrite only applies to public TL, not list."""
+        c = _client("fedibird")
+        with patch("misskey_cli.api.requests.get") as get:
+            get.return_value = MagicMock(
+                status_code=200, content=b"[]", json=lambda: []
+            )
+            c.timeline("list", limit=5, list_id="fb-list")
+            url = get.call_args[0][0]
+            assert url == "http://x/api/v1/timelines/list/fb-list"
+            params = get.call_args.kwargs.get("params") or {}
+            assert "remote" not in params
+            assert "local" not in params
+
+    def test_misskey_list_timeline_posts_user_list_endpoint(self):
+        c = MisskeyClient(host="m.example", token="t", scheme="http")
+        with patch("misskey_cli.api.requests.post") as post:
+            post.return_value = MagicMock(
+                status_code=200, content=b"[]", json=lambda: []
+            )
+            c.timeline("list", limit=5, list_id="mk-list")
+            url = post.call_args[0][0]
+            assert url == "http://m.example/api/notes/user-list-timeline"
+            body = post.call_args.kwargs.get("json") or {}
+            assert body.get("listId") == "mk-list"
+            assert body.get("limit") == 5
+
+    def test_misskey_list_timeline_without_list_id_raises(self):
+        c = MisskeyClient(host="m.example", token="t", scheme="http")
+        with pytest.raises(ValueError):
+            c.timeline("list", limit=5)
+
+    def test_misskey_unknown_timeline_type_raises(self):
+        c = MisskeyClient(host="m.example", token="t", scheme="http")
+        with pytest.raises(ValueError):
+            c.timeline("bogus", limit=5)

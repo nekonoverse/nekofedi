@@ -167,7 +167,11 @@ class MisskeyClient(_BaseClient):
     def i(self):
         return self._post("i")
 
-    def timeline(self, tl_type="home", limit=10):
+    def timeline(self, tl_type="home", limit=10, list_id=None):
+        if tl_type == "list":
+            if not list_id:
+                raise ValueError(_("error.list_id_required"))
+            return self._post("notes/user-list-timeline", listId=list_id, limit=limit)
         endpoints = {
             "home": "notes/timeline",
             "local": "notes/local-timeline",
@@ -178,6 +182,15 @@ class MisskeyClient(_BaseClient):
         if not endpoint:
             raise ValueError(_("error.unknown_timeline", tl_type=tl_type))
         return self._post(endpoint, limit=limit)
+
+    def lists(self):
+        """Return the user's lists as ``[{"id": ..., "name": ...}]``."""
+        result = self._post("users/lists/list")
+        return [
+            {"id": lst.get("id"), "name": lst.get("name")}
+            for lst in (result or [])
+            if lst.get("id")
+        ]
 
     def create_note(self, text, visibility="public", cw=None, reply_id=None, visible_user_ids=None):
         params = {"text": text, "visibility": visibility}
@@ -354,7 +367,7 @@ class MastodonClient(_BaseClient):
             "followersCount": me.get("followers_count", 0),
         }
 
-    def timeline(self, tl_type="home", limit=10):
+    def timeline(self, tl_type="home", limit=10, list_id=None):
         # Fedibird reinterprets ``local=true`` as "local-only visibility" and
         # uses ``remote=false`` to mean "public timeline without remote posts".
         local_key = "remote" if self.software == "fedibird" else "local"
@@ -372,9 +385,25 @@ class MastodonClient(_BaseClient):
             )
         elif tl_type == "global":
             statuses = self._get("api/v1/timelines/public", limit=limit)
+        elif tl_type == "list":
+            if not list_id:
+                raise ValueError(_("error.list_id_required"))
+            statuses = self._get(f"api/v1/timelines/list/{list_id}", limit=limit)
         else:
             raise ValueError(_("error.unknown_timeline", tl_type=tl_type))
         return [self._normalize_note(s) for s in (statuses or [])]
+
+    def lists(self):
+        """Return the user's lists as ``[{"id": ..., "name": ...}]``.
+
+        Mastodon exposes list names under ``title``; normalize to ``name``.
+        """
+        items = self._get("api/v1/lists")
+        return [
+            {"id": lst.get("id"), "name": lst.get("title") or lst.get("name")}
+            for lst in (items or [])
+            if lst.get("id")
+        ]
 
     def create_note(self, text, visibility="public", cw=None, reply_id=None, visible_user_ids=None):
         body = {

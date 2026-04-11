@@ -24,6 +24,7 @@ CATALOG = {
     "cmd.help.renote": "Renote a note",
     "cmd.help.react": "React to a note",
     "cmd.help.notif": "List notifications",
+    "cmd.help.list": "Show lists / select active list",
     "cmd.help.lang": "Show / change display language",
     "cmd.help.help": "Show this command list",
     "cmd.help.quit": "Exit",
@@ -36,6 +37,7 @@ CATALOG = {
     "usage.reply_text": "Usage: reply_text <note_id> [visibility] <text>",
     "usage.renote": "Usage: renote <note_id>",
     "usage.react": "Usage: react <note_id> <emoji>",
+    "usage.list_use": "Usage: list use <name_or_id>",
 
     # ----- Status / confirmation -----
     "status.login_active_as": "Logged in as {display_name}",
@@ -53,6 +55,8 @@ CATALOG = {
     "status.default_visibility_set": "Default visibility set to '{value}'",
     "status.default_timeline_current": "Current default: {value}",
     "status.default_timeline_set": "Default timeline set to '{value}'",
+    "status.list_active_set": "Active list: {name} [{id}]",
+    "status.list_active_none": "No active list. Run 'list use <name>' first.",
     "status.lang_current": "Current language: {code}  (available: {codes})",
     "status.lang_set": "Language set to '{code}'",
 
@@ -75,6 +79,11 @@ CATALOG = {
     "error.invalid_visibility": "Invalid visibility: {value}",
     "error.unknown_command": "Unknown command: {cmd} (type 'help' for the list)",
     "error.unknown_timeline": "Unknown timeline: {tl_type}",
+    "error.list_id_required": "list_id is required for tl_type='list'",
+    "error.no_active_list": "No active list. Run 'list use <name_or_id>' to select one.",
+    "error.list_not_found": "List not found: {target}",
+    "error.list_ambiguous": "Multiple lists match '{target}'. Use the id.",
+    "error.default_timeline_list_requires_active": "Set an active list first ('list use <name_or_id>') before setting default_timeline to 'list'.",
     "error.unknown_lang": "Unknown language: {code}  (available: {codes})",
 
     # ----- Empty results -----
@@ -83,6 +92,7 @@ CATALOG = {
     "empty.reply": "Empty replies are not sent.",
     "empty.notifications": "No notifications.",
     "empty.accounts": "No accounts. Run 'login <host>' to log in.",
+    "empty.lists": "No lists on this server.",
 
     # ----- Editor hints -----
     "editor.emoji_hint_nvim": "Emoji completion: type ':' in insert mode for suggestions (substring match)",

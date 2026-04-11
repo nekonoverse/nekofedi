@@ -153,3 +153,28 @@ def test_notifications_list(bob):
 def test_emojis_returns_list(bob):
     emojis = bob.emojis()
     assert isinstance(emojis, list)
+
+
+# ---------- Lists / list timeline ----------
+
+
+def test_lists_returns_normalized_name(bob, bob_token, ensure_mastodon_list):
+    ensure_mastodon_list(BASE, bob_token, "pleroma-e2e-list")
+    lists = bob.lists()
+    assert isinstance(lists, list)
+    names = [lst.get("name") for lst in lists]
+    assert "pleroma-e2e-list" in names
+    for lst in lists:
+        assert lst.get("id")
+        assert "name" in lst
+
+
+def test_list_timeline_returns_list(bob, bob_token, ensure_mastodon_list):
+    list_id = ensure_mastodon_list(BASE, bob_token, "pleroma-e2e-list-tl")
+    notes = bob.timeline("list", limit=5, list_id=list_id)
+    assert isinstance(notes, list)
+
+
+def test_list_timeline_without_list_id_raises(bob):
+    with pytest.raises(ValueError):
+        bob.timeline("list", limit=5)
