@@ -4,3 +4,4 @@ alembic
 prompt_toolkit
 pytest
 Pillow
+sixel

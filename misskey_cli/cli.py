@@ -31,6 +31,9 @@ def _narrower_visibility(a, b):
     return a if VISIBILITY_RANK.get(a, 0) >= VISIBILITY_RANK.get(b, 0) else b
 TL_TYPES = ("home", "local", "hybrid", "global", "list")
 
+# Supported terminal image backends for the `preview` command.
+IMAGE_BACKENDS = ("auto", "sixel", "kitty", "256")
+
 # Commands that terminate a cmdloop / script run instead of dispatching.
 QUIT_COMMANDS = ("quit", "exit")
 
@@ -66,6 +69,7 @@ COMMANDS = {
     "notif": "cmd.help.notif",
     "list": "cmd.help.list",
     "lang": "cmd.help.lang",
+    "image_backend": "cmd.help.image_backend",
     "help": "cmd.help.help",
     "quit": "cmd.help.quit",
     "exit": "cmd.help.quit",
@@ -295,6 +299,11 @@ class MisskeyCompleter(Completer):
             for v in VISIBILITIES:
                 if v.startswith(current):
                     yield Completion(v, start_position=-len(current))
+
+        elif cmd == "image_backend" and arg_pos == 1:
+            for b in IMAGE_BACKENDS:
+                if b.startswith(current):
+                    yield Completion(b, start_position=-len(current))
 
         elif cmd in ("reply", "reply_text") and arg_pos == 2:
             for v in VISIBILITIES:
@@ -865,6 +874,22 @@ class MisskeyCLI:
         i18n.set_language(code)
         print(_("status.lang_set", code=code))
 
+    def cmd_image_backend(self, arg):
+        v = arg.strip()
+        choices = ", ".join(IMAGE_BACKENDS)
+        if not v:
+            print(_(
+                "status.image_backend_current",
+                value=config.get_image_backend(),
+                choices=choices,
+            ))
+            return
+        if v not in IMAGE_BACKENDS:
+            self._error("error.invalid_choice", choices=choices)
+            return
+        config.set_image_backend(v)
+        print(_("status.image_backend_set", value=v))
+
     def _do_reply(self, note_id, explicit_visibility, text):
         """Common reply logic. If text is None, opens editor with mention pre-filled."""
         try:
@@ -1023,9 +1048,10 @@ class MisskeyCLI:
 
             from . import image as image_mod
 
-            term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
-            output = image_mod.render_image_256_from_url(
-                url, max_width=max(8, term_width - 4)
+            term_cols = shutil.get_terminal_size(fallback=(80, 24)).columns
+            backend = config.get_image_backend()
+            output = image_mod.render_image_from_url_auto(
+                url, max_cols=max(8, term_cols - 4), backend=backend
             )
         except Exception as e:
             self._error("error.preview_failed", message=str(e))

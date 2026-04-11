@@ -23,6 +23,7 @@ CATALOG = {
     "cmd.help.notif": "通知一覧",
     "cmd.help.list": "リスト一覧表示 / アクティブリスト切替",
     "cmd.help.lang": "表示言語の確認 / 変更",
+    "cmd.help.image_backend": "画像表示バックエンドの確認 / 設定 (auto, sixel, kitty, 256)",
     "cmd.help.help": "コマンド一覧を表示",
     "cmd.help.quit": "終了",
     "cmd.help.aliases_header": "エイリアス (Mastodon 風):",
@@ -59,6 +60,8 @@ CATALOG = {
     "status.list_active_none": "アクティブリスト未設定。'list use <name>' で選択してください。",
     "status.lang_current": "現在の言語: {code}  (選択肢: {codes})",
     "status.lang_set": "言語を '{code}' に設定しました",
+    "status.image_backend_current": "現在の画像バックエンド: {value}  (選択肢: {choices})",
+    "status.image_backend_set": "画像バックエンドを '{value}' に設定しました",
 
     # ----- Errors -----
     "error.generic": "エラー: {message}",

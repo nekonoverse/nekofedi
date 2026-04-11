@@ -163,6 +163,16 @@ def set_app_config(key, value):
         s.commit()
 
 
+def get_image_backend():
+    """Return the configured image backend, or 'auto' if unset."""
+    return get_app_config("image_backend", "auto")
+
+
+def set_image_backend(value):
+    """Persist the image backend choice in the global app_config table."""
+    set_app_config("image_backend", value)
+
+
 def save_credentials(host, token, username=None, software=None, scheme=None):
     from .db import get_session, Account
     with get_session() as s:

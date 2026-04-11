@@ -27,6 +27,7 @@ CATALOG = {
     "cmd.help.notif": "List notifications",
     "cmd.help.list": "Show lists / select active list",
     "cmd.help.lang": "Show / change display language",
+    "cmd.help.image_backend": "Show / set the image backend (auto, sixel, kitty, 256)",
     "cmd.help.help": "Show this command list",
     "cmd.help.quit": "Exit",
     "cmd.help.aliases_header": "Aliases (Mastodon-style):",
@@ -63,6 +64,8 @@ CATALOG = {
     "status.list_active_none": "No active list. Run 'list use <name>' first.",
     "status.lang_current": "Current language: {code}  (available: {codes})",
     "status.lang_set": "Language set to '{code}'",
+    "status.image_backend_current": "Current image backend: {value}  (available: {choices})",
+    "status.image_backend_set": "Image backend set to '{value}'",
 
     # ----- Errors -----
     "error.generic": "Error: {message}",

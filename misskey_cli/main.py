@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import sys
 
+from . import image
 from .cli import MisskeyCLI
 from .i18n import init_language
 from .migrate import run_upgrade
@@ -52,6 +53,10 @@ def main():
     args = _build_parser().parse_args()
     run_upgrade()
     init_language()
+    # Probe terminal graphics capability once, before prompt_toolkit takes
+    # over stdin/stdout. The result is cached in misskey_cli.image for the
+    # rest of the process lifetime.
+    image.detect_graphics_backend()
     cli = MisskeyCLI()
 
     with contextlib.ExitStack() as stack:

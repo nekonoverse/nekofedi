@@ -1258,7 +1258,7 @@ class TestCmdPreview:
         cli.cmd_preview("n1 xyz")
         assert capsys.readouterr().err
         # Render should not have been attempted.
-        with patch("misskey_cli.image.render_image_256_from_url") as render:
+        with patch("misskey_cli.image.render_image_from_url_auto") as render:
             render.assert_not_called()
 
     def test_zero_index_errors(self, capsys):
@@ -1289,9 +1289,11 @@ class TestCmdPreview:
             ],
         }
         with patch(
-            "misskey_cli.image.render_image_256_from_url",
+            "misskey_cli.image.render_image_from_url_auto",
             return_value="\x1b[38;5;196m\u2580\x1b[0m\n",
-        ) as render:
+        ) as render, patch(
+            "misskey_cli.config.get_image_backend", return_value="auto"
+        ):
             cli.cmd_preview("n1")
             render.assert_called_once()
             assert render.call_args[0][0] == "https://x/a.png"
@@ -1307,8 +1309,10 @@ class TestCmdPreview:
             ],
         }
         with patch(
-            "misskey_cli.image.render_image_256_from_url",
+            "misskey_cli.image.render_image_from_url_auto",
             return_value="",
+        ), patch(
+            "misskey_cli.config.get_image_backend", return_value="auto"
         ):
             cli.cmd_preview("n1")
         out = capsys.readouterr().out
@@ -1327,8 +1331,10 @@ class TestCmdPreview:
             "files": [{"url": "https://x/a.png", "type": "image"}],
         }
         with patch(
-            "misskey_cli.image.render_image_256_from_url",
+            "misskey_cli.image.render_image_from_url_auto",
             side_effect=RuntimeError("decode fail"),
+        ), patch(
+            "misskey_cli.config.get_image_backend", return_value="auto"
         ):
             cli.cmd_preview("n1")
         assert "decode fail" in capsys.readouterr().err
@@ -1346,13 +1352,48 @@ class TestCmdPreview:
             ],
         }
         with patch(
-            "misskey_cli.image.render_image_256_from_url",
+            "misskey_cli.image.render_image_from_url_auto",
             return_value="",
-        ) as render:
+        ) as render, patch(
+            "misskey_cli.config.get_image_backend", return_value="auto"
+        ):
             cli.cmd_preview("n1 2")
             render.assert_called_once()
             # The 2nd IMAGE (b.png), not the 2nd file (a.png).
             assert render.call_args[0][0] == "https://x/b.png"
+
+    def test_preview_reads_image_backend_from_config(self):
+        """cmd_preview must forward the current image_backend setting."""
+        cli, stub = _build_stub_cli()
+        stub.show_note.return_value = {
+            "id": "n1",
+            "files": [{"url": "https://x/a.png", "type": "image"}],
+        }
+        with patch(
+            "misskey_cli.image.render_image_from_url_auto",
+            return_value="",
+        ) as render, patch(
+            "misskey_cli.config.get_image_backend",
+            return_value="sixel",
+        ):
+            cli.cmd_preview("n1")
+        assert render.call_args.kwargs["backend"] == "sixel"
+
+    def test_preview_auto_backend_is_default(self):
+        cli, stub = _build_stub_cli()
+        stub.show_note.return_value = {
+            "id": "n1",
+            "files": [{"url": "https://x/a.png", "type": "image"}],
+        }
+        with patch(
+            "misskey_cli.image.render_image_from_url_auto",
+            return_value="",
+        ) as render, patch(
+            "misskey_cli.config.get_image_backend",
+            return_value="auto",
+        ):
+            cli.cmd_preview("n1")
+        assert render.call_args.kwargs["backend"] == "auto"
 
 
 # ---------- Completer & help for preview ----------
@@ -1371,3 +1412,530 @@ def test_help_lists_preview(capsys):
     cli, _ = _build_stub_cli()
     cli.cmd_help("")
     assert "preview" in capsys.readouterr().out
+
+
+# ---------- Graphics backend detection ----------
+
+
+def _stub_tty(stdin_is_tty=True, stdout_is_tty=True, read_response=""):
+    """Build a fake sys.stdin / sys.stdout pair for the DA1 probe.
+
+    ``read_response`` is handed out one character at a time from ``read(1)``.
+    """
+    fake_stdin = MagicMock()
+    fake_stdin.isatty.return_value = stdin_is_tty
+    fake_stdin.fileno.return_value = 0
+    chars = iter(read_response)
+    fake_stdin.read.side_effect = lambda n: next(chars, "")
+
+    fake_stdout = MagicMock()
+    fake_stdout.isatty.return_value = stdout_is_tty
+    fake_stdout.write = MagicMock()
+    fake_stdout.flush = MagicMock()
+    return fake_stdin, fake_stdout
+
+
+class TestDetectGraphicsBackend:
+    """Tests for :func:`misskey_cli.image.detect_graphics_backend`."""
+
+    def setup_method(self):
+        from misskey_cli import image
+
+        image._reset_backend_cache_for_tests()
+
+    def teardown_method(self):
+        from misskey_cli import image
+
+        image._reset_backend_cache_for_tests()
+
+    def test_kitty_env_wins(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.setenv("KITTY_WINDOW_ID", "1")
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        assert image.detect_graphics_backend() == "kitty"
+
+    def test_ghostty_env(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.setenv("TERM_PROGRAM", "ghostty")
+        assert image.detect_graphics_backend() == "kitty"
+
+    def test_wezterm_env(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.setenv("TERM_PROGRAM", "WezTerm")
+        assert image.detect_graphics_backend() == "kitty"
+
+    def test_no_env_no_tty_returns_none(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        fake_stdin, fake_stdout = _stub_tty(stdin_is_tty=False)
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        assert image.detect_graphics_backend() == "none"
+        fake_stdout.write.assert_not_called()
+
+    def test_tmux_bails_without_probe(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "tmux-256color")
+        fake_stdin, fake_stdout = _stub_tty()
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        assert image.detect_graphics_backend() == "none"
+        fake_stdout.write.assert_not_called()
+
+    def test_screen_bails_without_probe(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "screen.xterm-256color")
+        fake_stdin, fake_stdout = _stub_tty()
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        assert image.detect_graphics_backend() == "none"
+        fake_stdout.write.assert_not_called()
+
+    def test_probe_response_with_sixel_token(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+        fake_stdin, fake_stdout = _stub_tty(
+            read_response="\x1b[?64;1;2;4;6;9;15;22c"
+        )
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcgetattr", lambda fd: "saved"
+        )
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcsetattr", lambda fd, when, attrs: None
+        )
+        monkeypatch.setattr("misskey_cli.image.tty.setcbreak", lambda fd: None)
+        monkeypatch.setattr(
+            "misskey_cli.image.select.select",
+            lambda r, w, x, t: ([fake_stdin], [], []),
+        )
+        assert image.detect_graphics_backend() == "sixel"
+
+    def test_probe_response_without_sixel_token(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+        fake_stdin, fake_stdout = _stub_tty(
+            read_response="\x1b[?64;1;2;6;9;22c"
+        )
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcgetattr", lambda fd: "saved"
+        )
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcsetattr", lambda fd, when, attrs: None
+        )
+        monkeypatch.setattr("misskey_cli.image.tty.setcbreak", lambda fd: None)
+        monkeypatch.setattr(
+            "misskey_cli.image.select.select",
+            lambda r, w, x, t: ([fake_stdin], [], []),
+        )
+        assert image.detect_graphics_backend() == "none"
+
+    def test_probe_token_split_not_substring(self, monkeypatch):
+        """``14``/``40``/``42`` must NOT count as sixel (no literal ``4`` token)."""
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+        fake_stdin, fake_stdout = _stub_tty(
+            read_response="\x1b[?14;1;2;40;42c"
+        )
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcgetattr", lambda fd: "saved"
+        )
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcsetattr", lambda fd, when, attrs: None
+        )
+        monkeypatch.setattr("misskey_cli.image.tty.setcbreak", lambda fd: None)
+        monkeypatch.setattr(
+            "misskey_cli.image.select.select",
+            lambda r, w, x, t: ([fake_stdin], [], []),
+        )
+        assert image.detect_graphics_backend() == "none"
+
+    def test_probe_timeout(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+        fake_stdin, fake_stdout = _stub_tty()
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcgetattr", lambda fd: "saved"
+        )
+        monkeypatch.setattr(
+            "misskey_cli.image.termios.tcsetattr", lambda fd, when, attrs: None
+        )
+        monkeypatch.setattr("misskey_cli.image.tty.setcbreak", lambda fd: None)
+        monkeypatch.setattr(
+            "misskey_cli.image.select.select",
+            lambda r, w, x, t: ([], [], []),  # timeout
+        )
+        assert image.detect_graphics_backend() == "none"
+
+    def test_probe_defensive_exception(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+        fake_stdin, fake_stdout = _stub_tty()
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+
+        def boom(fd):
+            raise OSError("not a tty")
+
+        monkeypatch.setattr("misskey_cli.image.termios.tcgetattr", boom)
+        assert image.detect_graphics_backend() == "none"
+
+    def test_cached_result_reused(self, monkeypatch):
+        from misskey_cli import image
+
+        monkeypatch.setenv("KITTY_WINDOW_ID", "1")
+        monkeypatch.delenv("TERM_PROGRAM", raising=False)
+        assert image.detect_graphics_backend() == "kitty"
+        # Remove the env var; cache should still return kitty.
+        monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+        assert image.detect_graphics_backend() == "kitty"
+
+
+# ---------- Sixel and Kitty renderers ----------
+
+
+def _tiny_red_png():
+    from PIL import Image
+
+    img = Image.new("RGB", (2, 2), (255, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _larger_png():
+    """Noisy multi-kilobyte PNG so Kitty chunking exercises the multi-segment path.
+
+    A solid-color PNG would compress below the 4096-byte chunk threshold.
+    This uses pseudo-random RGB bytes (deterministic seed) so the encoded
+    PNG is large enough to require several APC segments.
+    """
+    import random
+
+    from PIL import Image
+
+    rng = random.Random(0xC0FFEE)
+    size = 100
+    data = bytes(rng.randrange(256) for _ in range(size * size * 3))
+    img = Image.frombytes("RGB", (size, size), data)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestRenderImageSixel:
+    def test_outputs_sixel_string(self):
+        from misskey_cli import image
+
+        out = image.render_image_sixel(_tiny_red_png(), max_pixel_width=64)
+        assert isinstance(out, str)
+        assert out.startswith("\x1bP")  # DCS introducer
+        assert out.endswith("\x1b\\")  # ST
+
+    def test_passes_max_pixel_width(self):
+        from misskey_cli import image
+
+        with patch("sixel.converter.SixelConverter") as SC:
+            SC.return_value.getvalue.return_value = "stub"
+            image.render_image_sixel(b"dummy", max_pixel_width=123)
+            assert SC.call_args.kwargs["w"] == 123
+
+
+class TestRenderImageKitty:
+    def test_small_image_has_kitty_header(self):
+        from misskey_cli import image
+
+        out = image.render_image_kitty(_tiny_red_png(), max_cols=20)
+        assert out.startswith("\x1b_Ga=T,f=100,c=20,m=")
+        assert out.endswith("\x1b\\\n")
+
+    def test_small_image_single_chunk_is_m0(self):
+        from misskey_cli import image
+
+        out = image.render_image_kitty(_tiny_red_png(), max_cols=20)
+        # Tiny PNG fits in a single <4096 byte base64 chunk.
+        assert out.count("\x1b_G") == 1
+        assert ",m=0;" in out
+
+    def test_large_image_is_chunked(self):
+        from misskey_cli import image
+
+        png = _larger_png()
+        out = image.render_image_kitty(png, max_cols=40)
+        # Verify there's more than one APC segment.
+        assert out.count("\x1b_G") >= 2
+        # Last chunk is m=0, earlier ones m=1.
+        assert ";m=0;" in out or "m=0;" in out
+        # Every segment opens with _G and closes with \\.
+        parts = out.rstrip("\n").split("\x1b\\")
+        parts = [p for p in parts if p]
+        for p in parts:
+            assert p.startswith("\x1b_G")
+
+    def test_base64_payload_roundtrips_to_png(self):
+        import base64 as b64
+        import re
+
+        from misskey_cli import image
+
+        png_in = _larger_png()
+        out = image.render_image_kitty(png_in, max_cols=40)
+        # Extract all payloads between ';' and the ST terminator.
+        segs = re.findall(r"\x1b_G[^;]*;([^\x1b]*)\x1b\\", out)
+        assert segs, "no APC segments found"
+        joined = "".join(segs)
+        decoded = b64.standard_b64decode(joined)
+        # Pillow re-encodes so bytes won't equal the input, but the result
+        # must still be a valid PNG (starts with the PNG magic).
+        assert decoded[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+class TestRenderImageAutoDispatch:
+    def setup_method(self):
+        from misskey_cli import image
+
+        image._reset_backend_cache_for_tests()
+
+    def teardown_method(self):
+        from misskey_cli import image
+
+        image._reset_backend_cache_for_tests()
+
+    def test_explicit_256(self):
+        from misskey_cli import image
+
+        with patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            r256.return_value = "256"
+            image.render_image_auto(b"x", max_cols=80, backend="256")
+        r256.assert_called_once()
+        rsx.assert_not_called()
+        rkt.assert_not_called()
+
+    def test_explicit_sixel(self):
+        from misskey_cli import image
+
+        with patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            rsx.return_value = "sixel"
+            image.render_image_auto(b"x", max_cols=80, backend="sixel")
+        rsx.assert_called_once()
+        r256.assert_not_called()
+        rkt.assert_not_called()
+
+    def test_explicit_kitty(self):
+        from misskey_cli import image
+
+        with patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            rkt.return_value = "kitty"
+            image.render_image_auto(b"x", max_cols=80, backend="kitty")
+        rkt.assert_called_once()
+        r256.assert_not_called()
+        rsx.assert_not_called()
+
+    def test_auto_picks_kitty_when_detected(self):
+        from misskey_cli import image
+
+        with patch(
+            "misskey_cli.image.detect_graphics_backend", return_value="kitty"
+        ), patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            rkt.return_value = "kitty"
+            image.render_image_auto(b"x", max_cols=80, backend="auto")
+        rkt.assert_called_once()
+        r256.assert_not_called()
+        rsx.assert_not_called()
+
+    def test_auto_picks_sixel_when_detected(self):
+        from misskey_cli import image
+
+        with patch(
+            "misskey_cli.image.detect_graphics_backend", return_value="sixel"
+        ), patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            rsx.return_value = "sixel"
+            image.render_image_auto(b"x", max_cols=80, backend="auto")
+        rsx.assert_called_once()
+        r256.assert_not_called()
+        rkt.assert_not_called()
+
+    def test_auto_falls_back_to_256(self):
+        from misskey_cli import image
+
+        with patch(
+            "misskey_cli.image.detect_graphics_backend", return_value="none"
+        ), patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            r256.return_value = "256"
+            image.render_image_auto(b"x", max_cols=80, backend="auto")
+        r256.assert_called_once()
+        rsx.assert_not_called()
+        rkt.assert_not_called()
+
+    def test_unknown_backend_falls_back_to_256(self):
+        from misskey_cli import image
+
+        with patch("misskey_cli.image.render_image_256") as r256, \
+             patch("misskey_cli.image.render_image_sixel") as rsx, \
+             patch("misskey_cli.image.render_image_kitty") as rkt:
+            r256.return_value = "256"
+            image.render_image_auto(b"x", max_cols=80, backend="bogus")
+        r256.assert_called_once()
+        rsx.assert_not_called()
+        rkt.assert_not_called()
+
+    def test_sixel_pixel_width_derived_from_cols(self):
+        from misskey_cli import image
+
+        with patch("misskey_cli.image.render_image_sixel") as rsx:
+            rsx.return_value = ""
+            image.render_image_auto(b"x", max_cols=80, backend="sixel")
+        # 80 cols * CELL_PIXEL_WIDTH (10) = 800 px
+        assert rsx.call_args.kwargs["max_pixel_width"] == 800
+
+
+# ---------- image_backend command ----------
+
+
+class TestCmdImageBackend:
+    def test_show_current(self, capsys):
+        cli, _ = _build_stub_cli()
+        with patch(
+            "misskey_cli.config.get_image_backend", return_value="auto"
+        ):
+            cli.cmd_image_backend("")
+        out = capsys.readouterr().out
+        assert "auto" in out
+
+    def test_set_sixel(self):
+        cli, _ = _build_stub_cli()
+        with patch("misskey_cli.config.set_image_backend") as set_ib:
+            cli.cmd_image_backend("sixel")
+        set_ib.assert_called_once_with("sixel")
+
+    def test_set_kitty(self):
+        cli, _ = _build_stub_cli()
+        with patch("misskey_cli.config.set_image_backend") as set_ib:
+            cli.cmd_image_backend("kitty")
+        set_ib.assert_called_once_with("kitty")
+
+    def test_set_256(self):
+        cli, _ = _build_stub_cli()
+        with patch("misskey_cli.config.set_image_backend") as set_ib:
+            cli.cmd_image_backend("256")
+        set_ib.assert_called_once_with("256")
+
+    def test_invalid_value_errors(self, capsys):
+        cli, _ = _build_stub_cli()
+        with patch("misskey_cli.config.set_image_backend") as set_ib:
+            cli.cmd_image_backend("bogus")
+        assert capsys.readouterr().err
+        set_ib.assert_not_called()
+
+    def test_does_not_require_login(self):
+        """image_backend is a terminal setting, not account-bound."""
+        cli, stub = _build_stub_cli()
+        stub.logged_in = False
+        with patch("misskey_cli.config.set_image_backend") as set_ib:
+            cli.cmd_image_backend("sixel")
+        set_ib.assert_called_once_with("sixel")
+
+
+def test_completer_image_backend_offers_all_choices():
+    completer = _make_completer()
+    results = _complete_text(completer, "image_backend ")
+    assert "auto" in results
+    assert "sixel" in results
+    assert "kitty" in results
+    assert "256" in results
+
+
+def test_completer_image_backend_prefix_filter():
+    completer = _make_completer()
+    results = _complete_text(completer, "image_backend si")
+    assert "sixel" in results
+    assert "auto" not in results
+    assert "kitty" not in results
+
+
+def test_help_lists_image_backend(capsys):
+    cli, _ = _build_stub_cli()
+    cli.cmd_help("")
+    assert "image_backend" in capsys.readouterr().out
+
+
+def test_main_probes_graphics_backend_once():
+    """main.main() must probe the graphics backend once, before
+    MisskeyCLI is constructed, so prompt_toolkit doesn't collide with
+    the DA1 query."""
+    from misskey_cli import main as main_mod
+
+    call_order = []
+
+    def fake_probe():
+        call_order.append("probe")
+        return "none"
+
+    class FakeCLI:
+        def __init__(self, *a, **kw):
+            call_order.append("cli_init")
+
+        def run_script(self, source):
+            call_order.append("run_script")
+            return True
+
+        def cmdloop(self):
+            call_order.append("cmdloop")
+
+    with patch("misskey_cli.main.run_upgrade"), \
+         patch("misskey_cli.main.init_language"), \
+         patch("misskey_cli.image.detect_graphics_backend", side_effect=fake_probe), \
+         patch("misskey_cli.main.MisskeyCLI", FakeCLI), \
+         patch("sys.argv", ["misskey-cli", "-c", "help"]), \
+         patch("sys.exit"):
+        main_mod.main()
+
+    assert call_order.index("probe") < call_order.index("cli_init")
+    assert call_order.count("probe") == 1

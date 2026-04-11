@@ -23,6 +23,7 @@ CATALOG = {
     "cmd.help.notif": "Lister les notifications",
     "cmd.help.list": "Afficher les listes / sélectionner la liste active",
     "cmd.help.lang": "Afficher / changer la langue d'affichage",
+    "cmd.help.image_backend": "Afficher / définir le backend d'image (auto, sixel, kitty, 256)",
     "cmd.help.help": "Afficher cette liste de commandes",
     "cmd.help.quit": "Quitter",
     "cmd.help.aliases_header": "Alias (style Mastodon) :",
@@ -59,6 +60,8 @@ CATALOG = {
     "status.list_active_none": "Aucune liste active. Lancez 'list use <name>' pour en sélectionner une.",
     "status.lang_current": "Langue actuelle : {code}  (disponibles : {codes})",
     "status.lang_set": "Langue définie sur '{code}'",
+    "status.image_backend_current": "Backend d'image actuel : {value}  (disponibles : {choices})",
+    "status.image_backend_set": "Backend d'image défini sur '{value}'",
 
     # ----- Errors -----
     "error.generic": "Erreur : {message}",
