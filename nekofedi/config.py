@@ -173,14 +173,17 @@ def set_image_backend(value):
     set_app_config("image_backend", value)
 
 
+_DEFAULT_TIMELINE_COUNT = 10
+
+
 def get_timeline_count():
     """Return the default number of notes a timeline fetch loads (>= 1)."""
     raw = get_app_config("timeline_count", None)
     try:
         n = int(raw)
     except (TypeError, ValueError):
-        return 10
-    return n if n >= 1 else 10
+        return _DEFAULT_TIMELINE_COUNT
+    return n if n >= 1 else _DEFAULT_TIMELINE_COUNT
 
 
 def set_timeline_count(n):

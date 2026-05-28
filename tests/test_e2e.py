@@ -104,6 +104,9 @@ def test_timeline_until_id_pages_to_older_notes(client):
     # No overlap with the first page, and every id is older (lexicographically
     # smaller — Misskey ids are monotonic) than the page boundary.
     assert set(page1_ids).isdisjoint(page2_ids)
+    # Lexicographic comparison assumes time-ordered ids (aid / aidx / ulid),
+    # which is the docker-compose default. A non-ordered id scheme (objectid)
+    # would not satisfy this.
     assert all(nid < oldest for nid in page2_ids)
 
 

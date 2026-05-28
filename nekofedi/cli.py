@@ -291,7 +291,7 @@ class NekofediCompleter(Completer):
                     continue
                 display_meta = f"@{meta['username']}: {meta['snippet']}"
                 if img_count:
-                    display_meta = f"[\U0001f4f7{img_count}] {display_meta}"
+                    display_meta = f"[\U0001f4ce{img_count}] {display_meta}"
                 yield Completion(nid, start_position=-len(current), display_meta=display_meta)
             return
 
@@ -746,7 +746,7 @@ class NekofediCLI:
             if rest and not rest[0].isdigit():
                 target = rest[0]
                 rest = rest[1:]
-            limit = int(rest[0]) if rest else 10
+            limit = int(rest[0]) if rest else config.get_timeline_count()
             if target:
                 lst = self._resolve_list_with_refresh(target)
                 if lst is None:
@@ -783,12 +783,18 @@ class NekofediCLI:
         for note in reversed(notes):
             print_formatted_text(FormattedText(_format_note(note)))
             print()
-        self._last_tl = {
-            "tl_type": tl_type,
-            "limit": limit,
-            "kwargs": kwargs,
-            "oldest_id": notes[-1].get("id"),
-        }
+        oldest_id = notes[-1].get("id")
+        # Only arm paging when we actually have a boundary id; otherwise a
+        # subsequent ``more`` would drop ``until_id`` and refetch the same page.
+        if oldest_id:
+            self._last_tl = {
+                "tl_type": tl_type,
+                "limit": limit,
+                # Copy so a later mutation of the caller's dict can't corrupt
+                # the remembered paging state.
+                "kwargs": dict(kwargs),
+                "oldest_id": oldest_id,
+            }
 
     def cmd_more(self, arg):
         if not self._require_login():

@@ -681,6 +681,21 @@ class TestListCompleterAndCmds:
             cli.cmd_tl("home")
         stub.timeline.assert_called_once_with("home", 7)
 
+    def test_cmd_tl_list_active_default_count_from_config(self):
+        """`tl list` (active list, no limit) also honors the default count."""
+        cli, stub = _build_stub_cli()
+        with patch("nekofedi.config.get_active_list_id", return_value="def"), \
+             patch("nekofedi.config.get_timeline_count", return_value=7):
+            cli.cmd_tl("list")
+        stub.timeline.assert_called_once_with("list", 7, list_id="def")
+
+    def test_cmd_tl_list_target_default_count_from_config(self):
+        """`tl list <name>` (no limit) also honors the default count."""
+        cli, stub = _build_stub_cli()
+        with patch("nekofedi.config.get_timeline_count", return_value=7):
+            cli.cmd_tl("list friends")
+        stub.timeline.assert_called_once_with("list", 7, list_id="abc")
+
 
 class TestTimelinePaging:
     def test_more_without_prior_timeline_errors(self, capsys):
