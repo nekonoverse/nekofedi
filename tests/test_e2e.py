@@ -83,6 +83,33 @@ def test_timeline_home(client):
     assert isinstance(notes, list)
 
 
+def test_timeline_until_id_pages_to_older_notes(client):
+    """``until_id`` must return notes strictly older than the given id (the
+    `more` paging mechanism). Post a marked batch, grab the first page, then
+    page past its oldest note and assert no overlap and a smaller id."""
+    marker = "e2e-paging"
+    for i in range(6):
+        client.create_note(f"{marker} {i}")
+    time.sleep(1)
+
+    page1 = client.timeline("local", limit=3)
+    assert len(page1) == 3
+    page1_ids = [n["id"] for n in page1]
+    # Misskey returns newest-first, so the oldest of the page is the last one.
+    oldest = page1_ids[-1]
+
+    page2 = client.timeline("local", limit=3, until_id=oldest)
+    assert page2, "until_id returned no older notes"
+    page2_ids = [n["id"] for n in page2]
+    # No overlap with the first page, and every id is older (lexicographically
+    # smaller — Misskey ids are monotonic) than the page boundary.
+    assert set(page1_ids).isdisjoint(page2_ids)
+    # Lexicographic comparison assumes time-ordered ids (aid / aidx / ulid),
+    # which is the docker-compose default. A non-ordered id scheme (objectid)
+    # would not satisfy this.
+    assert all(nid < oldest for nid in page2_ids)
+
+
 def test_reply(client):
     parent = client.create_note("parent note")["createdNote"]
     result = client.create_note("reply text", reply_id=parent["id"])

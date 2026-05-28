@@ -11,6 +11,8 @@ CATALOG = {
     "cmd.help.logout": "Supprimer le compte actif",
     "cmd.help.i": "Afficher votre profil",
     "cmd.help.tl": "Afficher un fil",
+    "cmd.help.more": "Charger des notes plus anciennes du dernier fil (alias : next)",
+    "cmd.help.count": "Afficher / définir le nombre de notes chargées par fil",
     "cmd.help.note": "Composer une note dans l'éditeur",
     "cmd.help.note_text": "Poster une note depuis la ligne de commande",
     "cmd.help.default_visibility": "Afficher / définir la visibilité par défaut",
@@ -37,7 +39,8 @@ CATALOG = {
     "usage.reply_text": "Utilisation : reply_text <note_id> [visibility] <text>",
     "usage.renote": "Utilisation : renote <note_id>",
     "usage.react": "Utilisation : react <note_id> <emoji>",
-    "usage.preview": "Utilisation : preview <note_id> [image_index]",
+    "usage.preview": "Utilisation : preview <note_id> [image_index]  (sans index, toutes les images sont affichées)",
+    "usage.count": "Utilisation : count [n]  (n >= 1)",
     "usage.list_use": "Utilisation : list use <name_or_id>",
 
     # ----- Status / confirmation -----
@@ -62,6 +65,8 @@ CATALOG = {
     "status.lang_set": "Langue définie sur '{code}'",
     "status.image_backend_current": "Backend d'image actuel : {value}  (disponibles : {choices})",
     "status.image_backend_set": "Backend d'image défini sur '{value}'",
+    "status.timeline_count_current": "Le fil charge {value} notes. Lancez 'count <n>' pour changer.",
+    "status.timeline_count_set": "Nombre de notes par fil défini sur {value}",
 
     # ----- Errors -----
     "error.generic": "Erreur : {message}",
@@ -84,6 +89,7 @@ CATALOG = {
     "error.preview_failed": "Échec de la prévisualisation : {message}",
     "error.unknown_command": "Commande inconnue : {cmd} (tapez 'help' pour la liste)",
     "error.unknown_timeline": "Fil inconnu : {tl_type}",
+    "error.no_timeline_yet": "Affichez d'abord un fil avec 'tl', puis 'more' charge les notes plus anciennes.",
     "error.list_id_required": "list_id est requis pour tl_type='list'",
     "error.no_active_list": "Aucune liste active. Lancez 'list use <name_or_id>' pour en sélectionner une.",
     "error.list_not_found": "Liste introuvable : {target}",

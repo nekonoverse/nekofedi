@@ -48,6 +48,7 @@ ALIASES = {
     "toot_text": "note_text",
     "boost": "renote",
     "whoami": "i",
+    "next": "more",
 }
 
 # Map command name → catalog key holding its description.
@@ -57,6 +58,8 @@ COMMANDS = {
     "logout": "cmd.help.logout",
     "i": "cmd.help.i",
     "tl": "cmd.help.tl",
+    "more": "cmd.help.more",
+    "count": "cmd.help.count",
     "note": "cmd.help.note",
     "note_text": "cmd.help.note_text",
     "default_visibility": "cmd.help.default_visibility",
@@ -274,13 +277,22 @@ class NekofediCompleter(Completer):
         # Position of the current/next argument (1 = first arg)
         arg_pos = len(parts) if text.endswith(" ") else len(parts) - 1
 
-        # Note ID completion (first arg of reply/renote/react)
+        # Note ID completion (first arg of reply/renote/react/preview).
+        # ``preview`` only makes sense for notes that actually carry an image,
+        # so we filter those out for that command and surface the image count.
         if cmd in NOTE_ID_COMMANDS and arg_pos == 1:
+            images_only = cmd == "preview"
             for meta in self._get_note_meta():
                 nid = meta["id"]
-                if nid.startswith(current):
-                    display_meta = f"@{meta['username']}: {meta['snippet']}"
-                    yield Completion(nid, start_position=-len(current), display_meta=display_meta)
+                if not nid.startswith(current):
+                    continue
+                img_count = meta.get("images", 0)
+                if images_only and not img_count:
+                    continue
+                display_meta = f"@{meta['username']}: {meta['snippet']}"
+                if img_count:
+                    display_meta = f"[\U0001f4ce{img_count}] {display_meta}"
+                yield Completion(nid, start_position=-len(current), display_meta=display_meta)
             return
 
         if cmd in ("tl", "default_timeline") and arg_pos == 1:
@@ -362,6 +374,8 @@ class NekofediCLI:
         self._emoji_cache = None
         self._lists_cache = None
         self._note_meta = []
+        # Remembers the last shown timeline so ``more`` can page to older notes.
+        self._last_tl = None
         self._had_error = False
         self._initial_display = None
         self._dispatch = None
@@ -499,7 +513,14 @@ class NekofediCLI:
         for note in notes:
             nid, username, snippet = _note_summary(note)
             if nid and nid not in seen:
-                new_meta.append({"id": nid, "username": username, "snippet": snippet})
+                files = note.get("files") or []
+                images = sum(1 for f in files if f.get("type") == "image")
+                new_meta.append({
+                    "id": nid,
+                    "username": username,
+                    "snippet": snippet,
+                    "images": images,
+                })
                 seen.add(nid)
         self._note_meta = new_meta + self._note_meta
 
@@ -725,7 +746,7 @@ class NekofediCLI:
             if rest and not rest[0].isdigit():
                 target = rest[0]
                 rest = rest[1:]
-            limit = int(rest[0]) if rest else 10
+            limit = int(rest[0]) if rest else config.get_timeline_count()
             if target:
                 lst = self._resolve_list_with_refresh(target)
                 if lst is None:
@@ -738,18 +759,72 @@ class NekofediCLI:
                     return
                 kwargs["list_id"] = list_id
         else:
-            limit = int(parts[1]) if len(parts) > 1 else 10
+            limit = int(parts[1]) if len(parts) > 1 else config.get_timeline_count()
         try:
-            notes = self.client.timeline(tl_type, limit, **kwargs)
-            if not notes:
-                print(_("empty.timeline"))
-                return
-            self._collect_notes(notes)
-            for note in reversed(notes):
-                print_formatted_text(FormattedText(_format_note(note)))
-                print()
+            self._show_timeline(tl_type, limit, kwargs)
         except Exception as e:
             self._error("error.generic", message=str(e))
+
+    def _show_timeline(self, tl_type, limit, kwargs, until_id=None):
+        """Fetch, print, and remember a timeline page.
+
+        Notes arrive newest-first from the API; we print oldest-first so the
+        newest ends up nearest the prompt. The oldest id is stashed in
+        ``self._last_tl`` so ``more`` can page further back with ``until_id``.
+        """
+        # Only thread ``until_id`` through when paging so a plain ``tl`` keeps
+        # the exact call shape the API client (and its tests) expect.
+        page = {"until_id": until_id} if until_id else {}
+        notes = self.client.timeline(tl_type, limit, **kwargs, **page)
+        if not notes:
+            print(_("empty.timeline"))
+            return
+        self._collect_notes(notes)
+        for note in reversed(notes):
+            print_formatted_text(FormattedText(_format_note(note)))
+            print()
+        oldest_id = notes[-1].get("id")
+        # Only arm paging when we actually have a boundary id; otherwise a
+        # subsequent ``more`` would drop ``until_id`` and refetch the same page.
+        if oldest_id:
+            self._last_tl = {
+                "tl_type": tl_type,
+                "limit": limit,
+                # Copy so a later mutation of the caller's dict can't corrupt
+                # the remembered paging state.
+                "kwargs": dict(kwargs),
+                "oldest_id": oldest_id,
+            }
+
+    def cmd_more(self, arg):
+        if not self._require_login():
+            return
+        if not self._last_tl:
+            self._error("error.no_timeline_yet")
+            return
+        lt = self._last_tl
+        try:
+            self._show_timeline(
+                lt["tl_type"], lt["limit"], lt["kwargs"], until_id=lt["oldest_id"]
+            )
+        except Exception as e:
+            self._error("error.generic", message=str(e))
+
+    def cmd_count(self, arg):
+        v = arg.strip()
+        if not v:
+            print(_("status.timeline_count_current", value=config.get_timeline_count()))
+            return
+        try:
+            n = int(v)
+        except ValueError:
+            self._error("usage.count")
+            return
+        if n < 1:
+            self._error("usage.count")
+            return
+        config.set_timeline_count(n)
+        print(_("status.timeline_count_set", value=n))
 
     def cmd_note(self, arg):
         if not self._require_login():
@@ -1014,17 +1089,17 @@ class NekofediCLI:
             self._error("usage.preview")
             return
         note_id = parts[0]
+        # No index given → render every image; an explicit index renders one.
+        index = None
         if len(parts) > 1:
             try:
                 index = int(parts[1])
             except ValueError:
                 self._error("usage.preview")
                 return
-        else:
-            index = 1
-        if index < 1:
-            self._error("usage.preview")
-            return
+            if index < 1:
+                self._error("usage.preview")
+                return
 
         try:
             note = self.client.show_note(note_id)
@@ -1037,12 +1112,19 @@ class NekofediCLI:
         if not images:
             self._error("empty.note_images")
             return
-        if index > len(images):
+        if index is not None and index > len(images):
             self._error("error.index_out_of_range", index=index, max=len(images))
             return
 
-        target = images[index - 1]
+        targets = [images[index - 1]] if index is not None else images
+        for n, target in enumerate(targets, start=1):
+            self._render_one_image(target, n, len(images), index)
+
+    def _render_one_image(self, target, position, total, explicit_index):
+        """Render a single attachment, prefixing a ``[n/total]`` header when a
+        note carries more than one image so the previews stay distinguishable."""
         url = target.get("url")
+        label = explicit_index if explicit_index is not None else position
         try:
             import shutil
 
@@ -1057,6 +1139,8 @@ class NekofediCLI:
             self._error("error.preview_failed", message=str(e))
             return
 
+        if total > 1:
+            print(f"  [{label}/{total}]")
         sys.stdout.write(output)
         sys.stdout.flush()
         alt = target.get("alt")

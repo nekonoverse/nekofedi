@@ -15,6 +15,8 @@ CATALOG = {
     "cmd.help.logout": "Delete the active account",
     "cmd.help.i": "Show your profile",
     "cmd.help.tl": "Show a timeline",
+    "cmd.help.more": "Load older notes from the last timeline (alias: next)",
+    "cmd.help.count": "Show / set how many notes a timeline loads",
     "cmd.help.note": "Compose a note in your editor",
     "cmd.help.note_text": "Post a note from the command line",
     "cmd.help.default_visibility": "Show / set the default note visibility",
@@ -41,7 +43,8 @@ CATALOG = {
     "usage.reply_text": "Usage: reply_text <note_id> [visibility] <text>",
     "usage.renote": "Usage: renote <note_id>",
     "usage.react": "Usage: react <note_id> <emoji>",
-    "usage.preview": "Usage: preview <note_id> [image_index]",
+    "usage.preview": "Usage: preview <note_id> [image_index]  (no index shows every image)",
+    "usage.count": "Usage: count [n]  (n >= 1)",
     "usage.list_use": "Usage: list use <name_or_id>",
 
     # ----- Status / confirmation -----
@@ -66,6 +69,8 @@ CATALOG = {
     "status.lang_set": "Language set to '{code}'",
     "status.image_backend_current": "Current image backend: {value}  (available: {choices})",
     "status.image_backend_set": "Image backend set to '{value}'",
+    "status.timeline_count_current": "Timeline loads {value} notes. Run 'count <n>' to change.",
+    "status.timeline_count_set": "Timeline count set to {value}",
 
     # ----- Errors -----
     "error.generic": "Error: {message}",
@@ -88,6 +93,7 @@ CATALOG = {
     "error.preview_failed": "Failed to preview image: {message}",
     "error.unknown_command": "Unknown command: {cmd} (type 'help' for the list)",
     "error.unknown_timeline": "Unknown timeline: {tl_type}",
+    "error.no_timeline_yet": "Show a timeline with 'tl' first, then 'more' loads older notes.",
     "error.list_id_required": "list_id is required for tl_type='list'",
     "error.no_active_list": "No active list. Run 'list use <name_or_id>' to select one.",
     "error.list_not_found": "List not found: {target}",

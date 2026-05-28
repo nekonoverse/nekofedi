@@ -136,6 +136,27 @@ def test_timeline_global_returns_list(bob):
     assert isinstance(notes, list)
 
 
+def test_timeline_until_id_pages_to_older_notes(bob):
+    """``until_id`` maps to Mastodon's ``max_id`` and must return statuses
+    strictly older than the boundary (the `more` paging mechanism)."""
+    for i in range(6):
+        bob.create_note(f"mastodon paging {i}")
+    time.sleep(1)
+
+    page1 = bob.timeline("local", limit=3)
+    assert len(page1) == 3
+    page1_ids = [n["id"] for n in page1]
+    # Mastodon returns newest-first; the oldest of the page is the last one.
+    oldest = page1_ids[-1]
+
+    page2 = bob.timeline("local", limit=3, until_id=oldest)
+    assert page2, "until_id (max_id) returned no older notes"
+    page2_ids = [n["id"] for n in page2]
+    assert set(page1_ids).isdisjoint(page2_ids)
+    # Mastodon status ids are numeric strings, monotonically increasing.
+    assert all(int(nid) < int(oldest) for nid in page2_ids)
+
+
 def test_renote(bob):
     parent = bob.create_note("mastodon renote target")["createdNote"]
     renote = bob.renote(parent["id"])

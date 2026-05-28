@@ -674,6 +674,98 @@ class TestListCompleterAndCmds:
         cli.cmd_tl("home 20")
         stub.timeline.assert_called_once_with("home", 20)
 
+    def test_cmd_tl_default_count_from_config(self):
+        """`tl home` with no limit honors the configurable default count."""
+        cli, stub = _build_stub_cli()
+        with patch("nekofedi.config.get_timeline_count", return_value=7):
+            cli.cmd_tl("home")
+        stub.timeline.assert_called_once_with("home", 7)
+
+    def test_cmd_tl_list_active_default_count_from_config(self):
+        """`tl list` (active list, no limit) also honors the default count."""
+        cli, stub = _build_stub_cli()
+        with patch("nekofedi.config.get_active_list_id", return_value="def"), \
+             patch("nekofedi.config.get_timeline_count", return_value=7):
+            cli.cmd_tl("list")
+        stub.timeline.assert_called_once_with("list", 7, list_id="def")
+
+    def test_cmd_tl_list_target_default_count_from_config(self):
+        """`tl list <name>` (no limit) also honors the default count."""
+        cli, stub = _build_stub_cli()
+        with patch("nekofedi.config.get_timeline_count", return_value=7):
+            cli.cmd_tl("list friends")
+        stub.timeline.assert_called_once_with("list", 7, list_id="abc")
+
+
+class TestTimelinePaging:
+    def test_more_without_prior_timeline_errors(self, capsys):
+        cli, stub = _build_stub_cli()
+        cli.cmd_more("")
+        assert capsys.readouterr().err
+        stub.timeline.assert_not_called()
+
+    def test_more_pages_with_until_id_of_oldest(self):
+        cli, stub = _build_stub_cli()
+        # API returns newest-first; the oldest is the last element.
+        stub.timeline.return_value = [
+            {"id": "n3", "user": {"username": "a"}, "text": "c"},
+            {"id": "n2", "user": {"username": "a"}, "text": "b"},
+            {"id": "n1", "user": {"username": "a"}, "text": "a"},
+        ]
+        # Stub out note rendering: this test only cares about paging call args,
+        # and prompt_toolkit's print caches its output across tests.
+        with patch("nekofedi.cli.print_formatted_text"), \
+             patch("nekofedi.config.get_timeline_count", return_value=3):
+            cli.cmd_tl("home")
+            stub.timeline.assert_called_once_with("home", 3)
+            stub.timeline.reset_mock()
+
+            cli.cmd_more("")
+        # Pages older than the oldest id (n1) seen so far, same limit.
+        stub.timeline.assert_called_once_with("home", 3, until_id="n1")
+
+    def test_more_preserves_list_kwargs(self):
+        cli, stub = _build_stub_cli()
+        stub.timeline.return_value = [
+            {"id": "m2", "user": {"username": "a"}, "text": "b"},
+            {"id": "m1", "user": {"username": "a"}, "text": "a"},
+        ]
+        with patch("nekofedi.cli.print_formatted_text"):
+            cli.cmd_tl("list friends 5")
+            stub.timeline.assert_called_once_with("list", 5, list_id="abc")
+            stub.timeline.reset_mock()
+
+            cli.cmd_more("")
+        stub.timeline.assert_called_once_with("list", 5, list_id="abc", until_id="m1")
+
+
+class TestCmdCount:
+    def test_show_current(self, capsys):
+        cli, _ = _build_stub_cli()
+        with patch("nekofedi.config.get_timeline_count", return_value=15):
+            cli.cmd_count("")
+        assert "15" in capsys.readouterr().out
+
+    def test_set_valid(self, capsys):
+        cli, _ = _build_stub_cli()
+        with patch("nekofedi.config.set_timeline_count") as setter:
+            cli.cmd_count("25")
+        setter.assert_called_once_with(25)
+
+    def test_set_non_integer_errors(self, capsys):
+        cli, _ = _build_stub_cli()
+        with patch("nekofedi.config.set_timeline_count") as setter:
+            cli.cmd_count("abc")
+        assert capsys.readouterr().err
+        setter.assert_not_called()
+
+    def test_set_zero_errors(self, capsys):
+        cli, _ = _build_stub_cli()
+        with patch("nekofedi.config.set_timeline_count") as setter:
+            cli.cmd_count("0")
+        assert capsys.readouterr().err
+        setter.assert_not_called()
+
 
 # ---------- CLI: run_script (non-interactive scripting) ----------
 
@@ -1399,13 +1491,18 @@ class TestCmdPreview:
 # ---------- Completer & help for preview ----------
 
 
-def test_completer_preview_offers_note_ids():
+def test_completer_preview_offers_only_image_notes():
     completer = _make_completer(
-        note_meta=[{"id": "n42", "username": "alice", "snippet": "hi"}],
+        note_meta=[
+            {"id": "n42", "username": "alice", "snippet": "hi", "images": 2},
+            {"id": "n43", "username": "bob", "snippet": "no pics", "images": 0},
+        ],
         lists=[],
     )
     results = _complete_text(completer, "preview ")
+    # Only the note that actually carries an image is offered for preview.
     assert "n42" in results
+    assert "n43" not in results
 
 
 def test_help_lists_preview(capsys):
@@ -1677,12 +1774,29 @@ class TestRenderImageSixel:
 
 
 class TestRenderImageKitty:
+    @pytest.fixture(autouse=True)
+    def _not_in_tmux(self):
+        # These assertions describe the raw (un-wrapped) sequence; force the
+        # non-tmux path so the suite is deterministic even when run inside tmux.
+        with patch("nekofedi.image._in_tmux", return_value=False):
+            yield
+
     def test_small_image_has_kitty_header(self):
         from nekofedi import image
 
         out = image.render_image_kitty(_tiny_red_png(), max_cols=20)
-        assert out.startswith("\x1b_Ga=T,f=100,c=20,m=")
+        assert out.startswith("\x1b_Ga=T,f=100,q=2,c=20,m=")
         assert out.endswith("\x1b\\\n")
+
+    def test_tmux_wraps_in_passthrough(self):
+        from nekofedi import image
+
+        with patch("nekofedi.image._in_tmux", return_value=True):
+            out = image.render_image_kitty(_tiny_red_png(), max_cols=20)
+        # DCS passthrough wrapper, with inner ESC doubled.
+        assert out.startswith("\x1bPtmux;")
+        assert out.endswith("\x1b\\\n")
+        assert "\x1b\x1b_G" in out
 
     def test_small_image_single_chunk_is_m0(self):
         from nekofedi import image

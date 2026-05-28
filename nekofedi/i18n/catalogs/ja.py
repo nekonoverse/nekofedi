@@ -11,6 +11,8 @@ CATALOG = {
     "cmd.help.logout": "アクティブなアカウントを削除",
     "cmd.help.i": "自分のプロフィール表示",
     "cmd.help.tl": "タイムライン表示",
+    "cmd.help.more": "直近のタイムラインの古いノートを追加読み込み (別名: next)",
+    "cmd.help.count": "タイムライン取得件数の確認 / 設定",
     "cmd.help.note": "エディタでノート作成",
     "cmd.help.note_text": "テキスト直接指定でノート投稿",
     "cmd.help.default_visibility": "デフォルト公開範囲の確認 / 設定",
@@ -37,7 +39,8 @@ CATALOG = {
     "usage.reply_text": "使い方: reply_text <note_id> [visibility] <text>",
     "usage.renote": "使い方: renote <note_id>",
     "usage.react": "使い方: react <note_id> <emoji>",
-    "usage.preview": "使い方: preview <note_id> [image_index]",
+    "usage.preview": "使い方: preview <note_id> [image_index]  (index 省略で全画像を表示)",
+    "usage.count": "使い方: count [n]  (n は 1 以上)",
     "usage.list_use": "使い方: list use <name_or_id>",
 
     # ----- Status / confirmation -----
@@ -62,6 +65,8 @@ CATALOG = {
     "status.lang_set": "言語を '{code}' に設定しました",
     "status.image_backend_current": "現在の画像バックエンド: {value}  (選択肢: {choices})",
     "status.image_backend_set": "画像バックエンドを '{value}' に設定しました",
+    "status.timeline_count_current": "タイムラインは {value} 件読み込みます。'count <n>' で変更できます。",
+    "status.timeline_count_set": "タイムライン取得件数を {value} 件に設定しました",
 
     # ----- Errors -----
     "error.generic": "エラー: {message}",
@@ -84,6 +89,7 @@ CATALOG = {
     "error.preview_failed": "画像のプレビューに失敗しました: {message}",
     "error.unknown_command": "不明なコマンド: {cmd} ('help' で一覧表示)",
     "error.unknown_timeline": "不明なタイムライン: {tl_type}",
+    "error.no_timeline_yet": "先に 'tl' でタイムラインを表示してください。その後 'more' で古いノートを読み込めます。",
     "error.list_id_required": "tl_type='list' には list_id が必要です",
     "error.no_active_list": "アクティブリスト未設定。'list use <name_or_id>' で選択してください。",
     "error.list_not_found": "リストが見つかりません: {target}",

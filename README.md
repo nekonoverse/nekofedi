@@ -67,14 +67,18 @@ Mastodon 家系はリスト名を `title` で返しますが CLI 側で `name` �
 | `account use @user@host` | アクティブアカウントを切り替え (1ホスト1アカウントなら host のみでも可) |
 | `logout` | アクティブアカウントを削除 |
 | `i` | 自分のプロフィール表示 |
-| `tl [home\|local\|hybrid\|global\|list] [件数]` | タイムライン表示 (`list` 時は `list use` で選択中のアクティブリスト) |
+| `tl [home\|local\|hybrid\|global\|list] [件数]` | タイムライン表示 (`list` 時は `list use` で選択中のアクティブリスト)。件数省略時は `count` の既定値 |
 | `tl list <name_or_id> [件数]` | 任意のリストタイムラインを一時指定で表示 (アクティブリストは変更されない) |
+| `more` / `next` | 直近に表示したタイムラインの続き (より古いノート) を読み込む |
+| `count [n]` | タイムラインの既定取得件数の確認 / 設定 (グローバル設定) |
 | `note [visibility]` | エディタ ($EDITOR, デフォルト nvim) でノートを書いて投稿 |
 | `note_text [visibility] <text>` | テキスト直接指定で投稿 |
 | `reply <note_id> [visibility]` | エディタでリプライ作成 (メンション自動付与) |
 | `reply_text <note_id> [visibility] <text>` | テキスト直接指定でリプライ |
 | `renote <note_id>` | リノート |
 | `react <note_id> <emoji>` | リアクション (コロン不要、自動付与) |
+| `preview <note_id> [画像番号]` | 添付画像をターミナルに表示 (番号省略で全画像) |
+| `image_backend [auto\|sixel\|kitty\|256]` | 画像表示バックエンドの確認 / 設定 (グローバル設定) |
 | `notif [件数]` | 通知一覧 |
 | `default_visibility [visibility]` | デフォルト公開範囲の設定/確認 (アクティブアカウントごと) |
 | `default_timeline [home\|local\|hybrid\|global\|list]` | デフォルトタイムラインの設定/確認 (アクティブアカウントごと) |
@@ -99,6 +103,7 @@ Mastodon ユーザー向けに、Misskey 用語のコマンドに Mastodon 風�
 | `toot_text` | `note_text` |
 | `boost` | `renote` |
 | `whoami` | `i` |
+| `next` | `more` |
 
 例: `toot_text public Hello!` は `note_text public Hello!` と等価です。
 
@@ -116,12 +121,32 @@ Tab キーでドロップダウン補完が表示されます。
 - `tl list <name>` / `default_timeline list <name>` のリスト名 (アクティブリストに `*` マーク)
 - `note` / `note_text` / `default_visibility` の公開範囲
 - `reply` / `renote` / `react` のノートID (直近の tl/notif から取得、新しい順)
+- `preview` のノートID は **画像添付があるノートのみ** に絞られ、添付枚数 (`📎n`) が候補に表示されます
 - `react` の絵文字ショートコード (部分一致検索)
 - `account use` のアカウント (`@user@host`、登録済みから)
 - `list use` のリスト名 (ログイン中アカウントのリストから)
 
 `note` でエディタが nvim の場合、挿入モードで `:` を入力するとポップアップが出て、続けてタイプすると部分一致で絞り込まれます (Misskey Web UI 風)。`<C-n>`/`<C-p>` で選択、`<C-y>` で確定。
 vim の場合は dictionary completion として読み込まれるので、`<C-n>` または `<C-x><C-k>` で `:emoji_name:` を補完できます。
+
+## 画像プレビュー
+
+`preview <note_id>` で添付画像をターミナルに直接表示します。画像番号を省略すると **そのノートの全画像** を順に表示し、`preview <note_id> 2` のように指定すると 2 枚目だけを表示します (複数枚あるときは `[n/総数]` の見出し付き)。
+
+バックエンドは `image_backend` で選択できます:
+
+- `auto` (既定) — 端末を判定して `kitty` → `sixel` → `256` の順に選択
+- `kitty` — Kitty graphics protocol (kitty, Ghostty, 新しめの WezTerm)
+- `sixel` — sixel 対応端末 (foot, WezTerm, mlterm, Konsole, iTerm2, xterm 等)
+- `256` — xterm 256 色ハーフブロック (どこでも動く最終手段)
+
+### tmux / screen での Kitty 表示
+
+tmux や screen の中では端末グラフィックスのエスケープが多重化レイヤーに飲み込まれるため、そのままでは Kitty 画像が表示されません。nekofedi は tmux/screen を検出すると DCS passthrough でエスケープを包んで外側の端末へ転送します。これを有効にするには **tmux 側で passthrough を許可**してください (tmux 3.3 以降):
+
+```tmux
+set -g allow-passthrough on
+```
 
 ## プロンプト
 
