@@ -49,6 +49,15 @@ _KITTY_CHUNK_SIZE = 4096  # base64 payload bytes per APC segment
 _APC_PREFIX = "\x1b_G"
 _APC_SUFFIX = "\x1b\\"
 
+# tmux DCS passthrough wrapper. Inside tmux the terminal never sees raw APC
+# escapes — tmux swallows them — so Kitty graphics silently fail. Wrapping the
+# whole sequence in ``ESC P tmux ; <payload> ESC \`` with every inner ESC
+# doubled lets tmux forward the bytes verbatim to the outer terminal. This is
+# what image.nvim does, which is why images show there but not here.
+# Requires ``set -g allow-passthrough on`` in the user's tmux config.
+_TMUX_PT_PREFIX = "\x1bPtmux;"
+_TMUX_PT_SUFFIX = "\x1b\\"
+
 # Sixel detection timeout (seconds) — modern terminals respond in <10 ms,
 # 200 ms leaves headroom for SSH over slow links without being user-visible.
 _SIXEL_PROBE_TIMEOUT = 0.2
@@ -296,13 +305,33 @@ def _to_png_bytes(image_bytes):
     return out.getvalue()
 
 
+def _in_tmux():
+    """Return ``True`` when running inside a tmux (or screen) session."""
+    if os.environ.get("TMUX"):
+        return True
+    term = os.environ.get("TERM", "")
+    return term.startswith("tmux") or term.startswith("screen")
+
+
+def _wrap_tmux_passthrough(seq):
+    """Wrap an escape sequence so tmux forwards it to the outer terminal.
+
+    Every inner ESC must be doubled per the DCS passthrough convention.
+    """
+    return _TMUX_PT_PREFIX + seq.replace("\x1b", "\x1b\x1b") + _TMUX_PT_SUFFIX
+
+
 def render_image_kitty(image_bytes, max_cols):
     """Render ``image_bytes`` as a Kitty graphics protocol escape string.
 
     The image is re-encoded as PNG, base64 is chunked into 4096-byte
     segments, and each segment is wrapped in an APC ``_G`` escape with
     ``m=1`` on all but the last (``m=0``). The first segment carries the
-    header parameters ``a=T,f=100,c=<max_cols>``.
+    header parameters ``a=T,f=100,q=2,c=<max_cols>``. ``q=2`` suppresses the
+    terminal's OK/error replies, which would otherwise land in stdin and be
+    read as stray input by the next prompt. When inside tmux the whole
+    sequence is wrapped in a DCS passthrough so the escapes reach the
+    outer terminal instead of being swallowed.
     """
     png = _to_png_bytes(image_bytes)
     payload = base64.standard_b64encode(png).decode("ascii")
@@ -319,12 +348,14 @@ def render_image_kitty(image_bytes, max_cols):
         is_last = idx == len(chunks) - 1
         m_flag = "0" if is_last else "1"
         if idx == 0:
-            header = f"a=T,f=100,c={max_cols},m={m_flag}"
+            header = f"a=T,f=100,q=2,c={max_cols},m={m_flag}"
         else:
             header = f"m={m_flag}"
         parts.append(f"{_APC_PREFIX}{header};{chunk}{_APC_SUFFIX}")
-    parts.append("\n")
-    return "".join(parts)
+    seq = "".join(parts)
+    if _in_tmux():
+        seq = _wrap_tmux_passthrough(seq)
+    return seq + "\n"
 
 
 def render_image_kitty_from_url(url, max_cols):

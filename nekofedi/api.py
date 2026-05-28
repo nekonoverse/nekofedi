@@ -220,11 +220,15 @@ class MisskeyClient(_BaseClient):
     def i(self):
         return self._post("i")
 
-    def timeline(self, tl_type="home", limit=10, list_id=None):
+    def timeline(self, tl_type="home", limit=10, list_id=None, until_id=None):
+        # ``until_id`` fetches notes strictly older than that id (paging).
+        page = {"untilId": until_id} if until_id else {}
         if tl_type == "list":
             if not list_id:
                 raise ValueError(_("error.list_id_required"))
-            notes = self._post("notes/user-list-timeline", listId=list_id, limit=limit)
+            notes = self._post(
+                "notes/user-list-timeline", listId=list_id, limit=limit, **page
+            )
             return self._inject_files_on_notes(notes)
         endpoints = {
             "home": "notes/timeline",
@@ -235,7 +239,7 @@ class MisskeyClient(_BaseClient):
         endpoint = endpoints.get(tl_type)
         if not endpoint:
             raise ValueError(_("error.unknown_timeline", tl_type=tl_type))
-        return self._inject_files_on_notes(self._post(endpoint, limit=limit))
+        return self._inject_files_on_notes(self._post(endpoint, limit=limit, **page))
 
     def lists(self):
         """Return the user's lists as ``[{"id": ..., "name": ...}]``."""
@@ -432,28 +436,30 @@ class MastodonClient(_BaseClient):
             "followersCount": me.get("followers_count", 0),
         }
 
-    def timeline(self, tl_type="home", limit=10, list_id=None):
+    def timeline(self, tl_type="home", limit=10, list_id=None, until_id=None):
         # Fedibird reinterprets ``local=true`` as "local-only visibility" and
         # uses ``remote=false`` to mean "public timeline without remote posts".
         local_key = "remote" if self.software == "fedibird" else "local"
         local_val = "false" if self.software == "fedibird" else "true"
+        # Mastodon pages with ``max_id`` (statuses strictly older than that id).
+        page = {"max_id": until_id} if until_id else {}
         if tl_type == "home":
-            statuses = self._get("api/v1/timelines/home", limit=limit)
+            statuses = self._get("api/v1/timelines/home", limit=limit, **page)
         elif tl_type == "local":
             statuses = self._get(
-                "api/v1/timelines/public", **{local_key: local_val}, limit=limit
+                "api/v1/timelines/public", **{local_key: local_val}, limit=limit, **page
             )
         elif tl_type == "hybrid":
             # Mastodon has no hybrid timeline; fall back to local.
             statuses = self._get(
-                "api/v1/timelines/public", **{local_key: local_val}, limit=limit
+                "api/v1/timelines/public", **{local_key: local_val}, limit=limit, **page
             )
         elif tl_type == "global":
-            statuses = self._get("api/v1/timelines/public", limit=limit)
+            statuses = self._get("api/v1/timelines/public", limit=limit, **page)
         elif tl_type == "list":
             if not list_id:
                 raise ValueError(_("error.list_id_required"))
-            statuses = self._get(f"api/v1/timelines/list/{list_id}", limit=limit)
+            statuses = self._get(f"api/v1/timelines/list/{list_id}", limit=limit, **page)
         else:
             raise ValueError(_("error.unknown_timeline", tl_type=tl_type))
         return [self._normalize_note(s) for s in (statuses or [])]
