@@ -80,16 +80,20 @@ def parse_host_arg(arg):
     return s.rstrip("/"), "https"
 
 
-def detect_software(host, scheme="https"):
+def detect_software(host, scheme="https", timeout=10):
     """Discover server software via nodeinfo.
 
     Returns the lowercase software name (e.g. 'misskey', 'mastodon') or None
     if discovery fails. Applies a Fedibird fallback: some Fedibird instances
     self-report ``software.name == "mastodon"`` but leak ``fedibird`` in the
     version or repository URL.
+
+    ``timeout`` bounds each of the (up to two) HTTP requests; callers that
+    only treat detection as best-effort (e.g. a forced ``login`` method) can
+    shorten it so an unreachable host does not stall.
     """
     try:
-        r = requests.get(f"{scheme}://{host}/.well-known/nodeinfo", timeout=10)
+        r = requests.get(f"{scheme}://{host}/.well-known/nodeinfo", timeout=timeout)
         r.raise_for_status()
         links = r.json().get("links") or []
         if not links:
@@ -104,7 +108,7 @@ def detect_software(host, scheme="https"):
         # request on the original scheme+host by using only the path.
         parsed = urllib.parse.urlparse(href)
         nodeinfo_url = f"{scheme}://{host}{parsed.path}" if parsed.path else href
-        r = requests.get(nodeinfo_url, timeout=10)
+        r = requests.get(nodeinfo_url, timeout=timeout)
         r.raise_for_status()
         sw = r.json().get("software") or {}
         name = (sw.get("name") or "").lower()

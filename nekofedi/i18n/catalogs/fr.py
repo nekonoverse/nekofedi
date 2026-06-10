@@ -78,7 +78,7 @@ CATALOG = {
     "error.detect_failed": "Impossible de récupérer les informations du serveur : {host}",
     "error.detect_failed_hint": "(nodeinfo n'est pas accessible ; vérifiez le nom d'hôte)",
     "error.unsupported_server": "Ce serveur n'est pas pris en charge ({software}). Seuls MiAuth (famille Misskey) et les serveurs compatibles Mastodon sont pris en charge.",
-    "error.unknown_login_method": "Méthode de connexion inconnue : {method} (utilisez « miauth » ou « mastodon »)",
+    "error.unknown_login_method": "Méthode de connexion inconnue : {method} (disponibles : {methods})",
     "error.user_info_failed": "Échec de la récupération des informations utilisateur",
     "error.login_failed": "Échec de la connexion : {message}",
     "error.account_not_found": "Compte introuvable : {target}",

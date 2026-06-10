@@ -78,7 +78,7 @@ CATALOG = {
     "error.detect_failed": "サーバー情報を取得できませんでした: {host}",
     "error.detect_failed_hint": "(nodeinfo にアクセスできません。ホスト名を確認してください)",
     "error.unsupported_server": "このサーバーは未対応です ({software})。MiAuth 対応 (Misskey 系) と Mastodon 互換サーバーのみサポートしています。",
-    "error.unknown_login_method": "不明なログイン方式: {method} ('miauth' または 'mastodon' を指定してください)",
+    "error.unknown_login_method": "不明なログイン方式: {method} (利用可能: {methods})",
     "error.user_info_failed": "ユーザー情報の取得に失敗しました",
     "error.login_failed": "ログイン失敗: {message}",
     "error.account_not_found": "アカウントが見つかりません: {target}",

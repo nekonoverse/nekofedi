@@ -2053,3 +2053,82 @@ def test_main_probes_graphics_backend_once():
 
     assert call_order.index("probe") < call_order.index("cli_init")
     assert call_order.count("probe") == 1
+
+
+# ---------- CLI: login method override (miauth / mastodon) ----------
+
+
+class TestLoginMethodOverride:
+    """Covers the optional second argument to ``login`` that forces the auth
+    method when nodeinfo auto-detection is unavailable or reports an
+    unrecognized fork: ``login <host> [miauth|mastodon]``.
+    """
+
+    def _run_login(self, arg, detected):
+        """Drive ``cmd_login`` with ``detect_software`` stubbed to ``detected``.
+
+        Returns ``(make_client_mock, save_credentials_mock, error_mock)`` so
+        callers can assert which software name was selected (via either the
+        client factory or the persisted credentials) or which error fired.
+        """
+        cli, _ = _build_stub_cli()
+        login_client = MagicMock()
+        login_client.token = "tok"
+        login_client.login.return_value = {
+            "username": "bob",
+            "name": "Bob",
+            "id": "u1",
+        }
+        with patch("nekofedi.cli.detect_software", return_value=detected), \
+             patch("nekofedi.cli.make_client", return_value=login_client) as mc, \
+             patch("nekofedi.config.save_credentials") as save, \
+             patch.object(cli, "_error") as err:
+            cli.cmd_login(arg)
+        return mc, save, err
+
+    def test_forced_miauth_falls_back_to_misskey_when_undetected(self):
+        mc, save, err = self._run_login("unreachable.example miauth", None)
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "misskey"
+        assert save.call_args.kwargs["software"] == "misskey"
+
+    def test_forced_mastodon_falls_back_to_mastodon_when_undetected(self):
+        mc, _save, err = self._run_login("unreachable.example mastodon", None)
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "mastodon"
+
+    def test_forced_mastodon_keeps_detected_family_member(self):
+        # A reachable nodeinfo reporting 'pleroma' is kept (not flattened to
+        # 'mastodon') so make_client keeps the reaction extension enabled.
+        mc, _save, err = self._run_login("p.example mastodon", "pleroma")
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "pleroma"
+
+    def test_forced_method_overrides_conflicting_detection(self):
+        # A detected name from the *other* family must not beat the override.
+        mc, _save, err = self._run_login("x.example miauth", "mastodon")
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "misskey"
+
+    def test_unknown_method_is_rejected(self):
+        mc, _save, err = self._run_login("h.example bogus", "misskey")
+        err.assert_called_once()
+        assert err.call_args.args[0] == "error.unknown_login_method"
+        mc.assert_not_called()
+
+    def test_too_many_arguments_show_usage(self):
+        mc, _save, err = self._run_login("a b c", "misskey")
+        err.assert_called_once_with("usage.login")
+        mc.assert_not_called()
+
+    def test_forced_detection_uses_short_timeout(self):
+        cli, _ = _build_stub_cli()
+        login_client = MagicMock()
+        login_client.token = "tok"
+        login_client.login.return_value = {"username": "bob", "id": "u1"}
+        with patch("nekofedi.cli.detect_software", return_value=None) as det, \
+             patch("nekofedi.cli.make_client", return_value=login_client), \
+             patch("nekofedi.config.save_credentials"), \
+             patch.object(cli, "_error"):
+            cli.cmd_login("unreachable.example mastodon")
+        assert det.call_args.kwargs.get("timeout") == 4

@@ -82,7 +82,7 @@ CATALOG = {
     "error.detect_failed": "Could not retrieve server information: {host}",
     "error.detect_failed_hint": "(nodeinfo is not reachable; please check the host name)",
     "error.unsupported_server": "This server is not supported ({software}). Only MiAuth (Misskey-family) and Mastodon-compatible servers are supported.",
-    "error.unknown_login_method": "Unknown login method: {method} (use 'miauth' or 'mastodon')",
+    "error.unknown_login_method": "Unknown login method: {method} (available: {methods})",
     "error.user_info_failed": "Failed to retrieve user information",
     "error.login_failed": "Login failed: {message}",
     "error.account_not_found": "Account not found: {target}",

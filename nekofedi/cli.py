@@ -621,17 +621,25 @@ class NekofediCLI:
         if len(parts) == 2:
             forced = parts[1].lower()
             if forced not in LOGIN_METHODS:
-                self._error("error.unknown_login_method", method=parts[1])
+                self._error(
+                    "error.unknown_login_method",
+                    method=parts[1],
+                    methods=", ".join(LOGIN_METHODS),
+                )
                 return
         host, scheme = parse_host_arg(parts[0])
-        detected = detect_software(host, scheme=scheme)
         if forced:
-            # The override wins, but keep the detected name when it belongs to
-            # the forced family (e.g. 'pleroma' enables reaction extensions).
+            # The override already determines the client. Detection is only
+            # best-effort here: when nodeinfo is reachable we keep the more
+            # specific family-compatible name (e.g. 'pleroma' enables reaction
+            # extensions), but use a short timeout so an unreachable host — a
+            # common reason to force a method — does not stall the login.
             family, fallback = LOGIN_METHODS[forced]
+            detected = detect_software(host, scheme=scheme, timeout=4)
             software = detected if detected in family else fallback
             print(_("status.forced_method", method=forced, software=software))
         else:
+            detected = detect_software(host, scheme=scheme)
             if detected is None:
                 self._error("error.detect_failed", host=host)
                 self._error("error.detect_failed_hint")
