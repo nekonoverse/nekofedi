@@ -11,6 +11,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
 
 from .api import (
+    FORCED_DETECT_TIMEOUT,
     LOGIN_METHODS,
     MASTODON_SOFTWARE,
     MIAUTH_SOFTWARE,
@@ -635,7 +636,7 @@ class NekofediCLI:
             # extensions), but use a short timeout so an unreachable host — a
             # common reason to force a method — does not stall the login.
             family, fallback = LOGIN_METHODS[forced]
-            detected = detect_software(host, scheme=scheme, timeout=4)
+            detected = detect_software(host, scheme=scheme, timeout=FORCED_DETECT_TIMEOUT)
             software = detected if detected in family else fallback
             print(_("status.forced_method", method=forced, software=software))
         else:

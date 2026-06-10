@@ -6,6 +6,7 @@ import pytest
 from prompt_toolkit.document import Document
 
 from nekofedi.api import (
+    FORCED_DETECT_TIMEOUT,
     MASTODON_SOFTWARE,
     MastodonClient,
     MisskeyClient,
@@ -2097,12 +2098,20 @@ class TestLoginMethodOverride:
         assert err.call_count == 0
         assert mc.call_args.kwargs["software"] == "mastodon"
 
-    def test_forced_mastodon_keeps_detected_family_member(self):
-        # A reachable nodeinfo reporting 'pleroma' is kept (not flattened to
-        # 'mastodon') so make_client keeps the reaction extension enabled.
-        mc, _save, err = self._run_login("p.example mastodon", "pleroma")
+    @pytest.mark.parametrize(
+        "arg, detected, expected",
+        [
+            # A reachable nodeinfo whose name belongs to the forced family is
+            # kept (not flattened to the fallback) so make_client retains any
+            # family-specific behaviour (e.g. 'pleroma' reaction extensions).
+            ("p.example mastodon", "pleroma", "pleroma"),
+            ("s.example miauth", "sharkey", "sharkey"),
+        ],
+    )
+    def test_forced_method_keeps_detected_family_member(self, arg, detected, expected):
+        mc, _save, err = self._run_login(arg, detected)
         assert err.call_count == 0
-        assert mc.call_args.kwargs["software"] == "pleroma"
+        assert mc.call_args.kwargs["software"] == expected
 
     def test_forced_method_overrides_conflicting_detection(self):
         # A detected name from the *other* family must not beat the override.
@@ -2111,13 +2120,14 @@ class TestLoginMethodOverride:
         assert mc.call_args.kwargs["software"] == "misskey"
 
     def test_unknown_method_is_rejected(self):
-        mc, _save, err = self._run_login("h.example bogus", "misskey")
+        # Detection never runs (early return), so detected is irrelevant.
+        mc, _save, err = self._run_login("h.example bogus", None)
         err.assert_called_once()
         assert err.call_args.args[0] == "error.unknown_login_method"
         mc.assert_not_called()
 
     def test_too_many_arguments_show_usage(self):
-        mc, _save, err = self._run_login("a b c", "misskey")
+        mc, _save, err = self._run_login("a b c", None)
         err.assert_called_once_with("usage.login")
         mc.assert_not_called()
 
@@ -2131,4 +2141,4 @@ class TestLoginMethodOverride:
              patch("nekofedi.config.save_credentials"), \
              patch.object(cli, "_error"):
             cli.cmd_login("unreachable.example mastodon")
-        assert det.call_args.kwargs.get("timeout") == 4
+        assert det.call_args.kwargs.get("timeout") == FORCED_DETECT_TIMEOUT

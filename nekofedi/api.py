@@ -65,6 +65,11 @@ LOGIN_METHODS = {
     "mastodon": (MASTODON_SOFTWARE, "mastodon"),
 }
 
+# Per-request timeout for the best-effort nodeinfo probe done when a login
+# method is forced: short, because the usual reason to force one is that the
+# host's nodeinfo is unreachable and we don't want to stall the login.
+FORCED_DETECT_TIMEOUT = 4
+
 
 def parse_host_arg(arg):
     """Parse a `login` argument into (host, scheme).
