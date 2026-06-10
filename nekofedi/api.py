@@ -56,6 +56,15 @@ MASTODON_SOFTWARE = frozenset(
 # (`PUT /api/v1/pleroma/statuses/:id/reactions/:emoji`).
 _PLEROMA_REACTION_SOFTWARE = frozenset({"pleroma", "akkoma"})
 
+# Optional ``login`` method overrides, for servers whose nodeinfo auto-detection
+# fails or reports an unrecognized fork. Each keyword maps to the family it
+# forces and the software name to record when detection could not supply a more
+# specific (family-compatible) one.
+LOGIN_METHODS = {
+    "miauth": (MIAUTH_SOFTWARE, "misskey"),
+    "mastodon": (MASTODON_SOFTWARE, "mastodon"),
+}
+
 
 def parse_host_arg(arg):
     """Parse a `login` argument into (host, scheme).

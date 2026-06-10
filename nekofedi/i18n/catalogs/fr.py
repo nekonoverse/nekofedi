@@ -32,7 +32,7 @@ CATALOG = {
     "cmd.help.alias_for": "alias pour '{canonical}'",
 
     # ----- Usage hints -----
-    "usage.login": "Utilisation : login <host>  ex. login misskey.caligula-sea.net",
+    "usage.login": "Utilisation : login <host> [miauth|mastodon]  ex. login misskey.caligula-sea.net",
     "usage.note_text": "Utilisation : note_text [visibility] <text>",
     "usage.account_use": "Utilisation : account use @user@host  (l'hôte seul suffit s'il n'y a qu'un compte par hôte)",
     "usage.reply": "Utilisation : reply <note_id> [visibility]",
@@ -46,6 +46,7 @@ CATALOG = {
     # ----- Status / confirmation -----
     "status.login_active_as": "Connecté en tant que {display_name}",
     "status.detected": "Détecté : {software}",
+    "status.forced_method": "Méthode de connexion forcée : {method} (logiciel : {software})",
     "status.login_success": "Connexion réussie : {display_name}",
     "status.switched": "Basculé vers : {who}",
     "status.logout": "Déconnecté : {host}",
@@ -77,6 +78,7 @@ CATALOG = {
     "error.detect_failed": "Impossible de récupérer les informations du serveur : {host}",
     "error.detect_failed_hint": "(nodeinfo n'est pas accessible ; vérifiez le nom d'hôte)",
     "error.unsupported_server": "Ce serveur n'est pas pris en charge ({software}). Seuls MiAuth (famille Misskey) et les serveurs compatibles Mastodon sont pris en charge.",
+    "error.unknown_login_method": "Méthode de connexion inconnue : {method} (utilisez « miauth » ou « mastodon »)",
     "error.user_info_failed": "Échec de la récupération des informations utilisateur",
     "error.login_failed": "Échec de la connexion : {message}",
     "error.account_not_found": "Compte introuvable : {target}",
