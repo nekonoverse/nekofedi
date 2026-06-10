@@ -36,7 +36,7 @@ CATALOG = {
     "cmd.help.alias_for": "alias for '{canonical}'",
 
     # ----- Usage hints -----
-    "usage.login": "Usage: login <host>  e.g. login misskey.caligula-sea.net",
+    "usage.login": "Usage: login <host> [miauth|mastodon]  e.g. login misskey.caligula-sea.net",
     "usage.note_text": "Usage: note_text [visibility] <text>",
     "usage.account_use": "Usage: account use @user@host  (host alone works if there's only one account per host)",
     "usage.reply": "Usage: reply <note_id> [visibility]",
@@ -50,6 +50,7 @@ CATALOG = {
     # ----- Status / confirmation -----
     "status.login_active_as": "Logged in as {display_name}",
     "status.detected": "Detected: {software}",
+    "status.forced_method": "Login method override: {method} (software: {software})",
     "status.login_success": "Login successful: {display_name}",
     "status.switched": "Switched to: {who}",
     "status.logout": "Logged out: {host}",
@@ -81,6 +82,7 @@ CATALOG = {
     "error.detect_failed": "Could not retrieve server information: {host}",
     "error.detect_failed_hint": "(nodeinfo is not reachable; please check the host name)",
     "error.unsupported_server": "This server is not supported ({software}). Only MiAuth (Misskey-family) and Mastodon-compatible servers are supported.",
+    "error.unknown_login_method": "Unknown login method: {method} (available: {methods})",
     "error.user_info_failed": "Failed to retrieve user information",
     "error.login_failed": "Login failed: {message}",
     "error.account_not_found": "Account not found: {target}",

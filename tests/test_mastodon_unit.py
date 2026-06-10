@@ -6,6 +6,7 @@ import pytest
 from prompt_toolkit.document import Document
 
 from nekofedi.api import (
+    FORCED_DETECT_TIMEOUT,
     MASTODON_SOFTWARE,
     MastodonClient,
     MisskeyClient,
@@ -2053,3 +2054,91 @@ def test_main_probes_graphics_backend_once():
 
     assert call_order.index("probe") < call_order.index("cli_init")
     assert call_order.count("probe") == 1
+
+
+# ---------- CLI: login method override (miauth / mastodon) ----------
+
+
+class TestLoginMethodOverride:
+    """Covers the optional second argument to ``login`` that forces the auth
+    method when nodeinfo auto-detection is unavailable or reports an
+    unrecognized fork: ``login <host> [miauth|mastodon]``.
+    """
+
+    def _run_login(self, arg, detected):
+        """Drive ``cmd_login`` with ``detect_software`` stubbed to ``detected``.
+
+        Returns ``(make_client_mock, save_credentials_mock, error_mock)`` so
+        callers can assert which software name was selected (via either the
+        client factory or the persisted credentials) or which error fired.
+        """
+        cli, _ = _build_stub_cli()
+        login_client = MagicMock()
+        login_client.token = "tok"
+        login_client.login.return_value = {
+            "username": "bob",
+            "name": "Bob",
+            "id": "u1",
+        }
+        with patch("nekofedi.cli.detect_software", return_value=detected), \
+             patch("nekofedi.cli.make_client", return_value=login_client) as mc, \
+             patch("nekofedi.config.save_credentials") as save, \
+             patch.object(cli, "_error") as err:
+            cli.cmd_login(arg)
+        return mc, save, err
+
+    def test_forced_miauth_falls_back_to_misskey_when_undetected(self):
+        mc, save, err = self._run_login("unreachable.example miauth", None)
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "misskey"
+        assert save.call_args.kwargs["software"] == "misskey"
+
+    def test_forced_mastodon_falls_back_to_mastodon_when_undetected(self):
+        mc, _save, err = self._run_login("unreachable.example mastodon", None)
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "mastodon"
+
+    @pytest.mark.parametrize(
+        "arg, detected, expected",
+        [
+            # A reachable nodeinfo whose name belongs to the forced family is
+            # kept (not flattened to the fallback) so make_client retains any
+            # family-specific behaviour (e.g. 'pleroma' reaction extensions).
+            ("p.example mastodon", "pleroma", "pleroma"),
+            ("s.example miauth", "sharkey", "sharkey"),
+        ],
+    )
+    def test_forced_method_keeps_detected_family_member(self, arg, detected, expected):
+        mc, _save, err = self._run_login(arg, detected)
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == expected
+
+    def test_forced_method_overrides_conflicting_detection(self):
+        # A detected name from the *other* family must not beat the override.
+        mc, _save, err = self._run_login("x.example miauth", "mastodon")
+        assert err.call_count == 0
+        assert mc.call_args.kwargs["software"] == "misskey"
+
+    def test_unknown_method_is_rejected(self):
+        # Detection never runs (early return), so detected is irrelevant.
+        mc, _save, err = self._run_login("h.example bogus", None)
+        err.assert_called_once()
+        assert err.call_args.args[0] == "error.unknown_login_method"
+        mc.assert_not_called()
+
+    def test_too_many_arguments_show_usage(self):
+        mc, _save, err = self._run_login("a b c", None)
+        err.assert_called_once_with("usage.login")
+        mc.assert_not_called()
+
+    def test_forced_detection_uses_short_timeout(self):
+        cli, _ = _build_stub_cli()
+        login_client = MagicMock()
+        login_client.token = "tok"
+        login_client.login.return_value = {"username": "bob", "id": "u1"}
+        with patch("nekofedi.cli.detect_software", return_value=None) as det, \
+             patch("nekofedi.cli.make_client", return_value=login_client), \
+             patch("nekofedi.config.save_credentials"), \
+             patch.object(cli, "_error"):
+            cli.cmd_login("unreachable.example mastodon")
+        assert det.call_args.kwargs.get("timeout") == FORCED_DETECT_TIMEOUT

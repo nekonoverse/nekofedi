@@ -11,6 +11,8 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
 
 from .api import (
+    FORCED_DETECT_TIMEOUT,
+    LOGIN_METHODS,
     MASTODON_SOFTWARE,
     MIAUTH_SOFTWARE,
     detect_software,
@@ -612,19 +614,42 @@ class NekofediCLI:
             print(f"  {alias:22s} {_('cmd.help.alias_for', canonical=canonical)}")
 
     def cmd_login(self, arg):
-        if not arg.strip():
+        parts = arg.strip().split()
+        if not parts or len(parts) > 2:
             self._error("usage.login")
             return
-        host, scheme = parse_host_arg(arg)
-        software = detect_software(host, scheme=scheme)
-        if software is None:
-            self._error("error.detect_failed", host=host)
-            self._error("error.detect_failed_hint")
-            return
-        print(_("status.detected", software=software))
-        if software not in MIAUTH_SOFTWARE and software not in MASTODON_SOFTWARE:
-            self._error("error.unsupported_server", software=software)
-            return
+        forced = None
+        if len(parts) == 2:
+            forced = parts[1].lower()
+            if forced not in LOGIN_METHODS:
+                self._error(
+                    "error.unknown_login_method",
+                    method=parts[1],
+                    methods=", ".join(LOGIN_METHODS),
+                )
+                return
+        host, scheme = parse_host_arg(parts[0])
+        if forced:
+            # The override already determines the client. Detection is only
+            # best-effort here: when nodeinfo is reachable we keep the more
+            # specific family-compatible name (e.g. 'pleroma' enables reaction
+            # extensions), but use a short timeout so an unreachable host — a
+            # common reason to force a method — does not stall the login.
+            family, fallback = LOGIN_METHODS[forced]
+            detected = detect_software(host, scheme=scheme, timeout=FORCED_DETECT_TIMEOUT)
+            software = detected if detected in family else fallback
+            print(_("status.forced_method", method=forced, software=software))
+        else:
+            detected = detect_software(host, scheme=scheme)
+            if detected is None:
+                self._error("error.detect_failed", host=host)
+                self._error("error.detect_failed_hint")
+                return
+            if detected not in MIAUTH_SOFTWARE and detected not in MASTODON_SOFTWARE:
+                self._error("error.unsupported_server", software=detected)
+                return
+            software = detected
+            print(_("status.detected", software=software))
         client = make_client(software=software, scheme=scheme)
         try:
             user = client.login(host)

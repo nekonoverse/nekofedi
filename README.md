@@ -30,6 +30,13 @@ docker run -it --user $(id -u):$(id -g) \
 `login <host>` 実行時に nodeinfo からサーバー種別を自動判別します。
 ローカル検証用に `login http://localhost:8000` のように `http://` / `https://` プレフィックスを付けることもできます (省略時は https)。
 
+nodeinfo が取得できない、または未知のフォークで自動判別に失敗する場合は、第2引数で認証方式を明示できます:
+
+- `login <host> miauth` — MiAuth (Misskey 系) を強制
+- `login <host> mastodon` — Mastodon 互換 OAuth (OOB) を強制
+
+明示した方式が優先されますが、自動判別が成功してその方式と同じ系統のソフトウェア名 (例: `pleroma`) が取れた場合はそちらを記録し、拡張機能 (Pleroma 絵文字リアクション等) を有効にします。
+
 ### リストタイムライン
 
 サーバー上で作成済みのユーザーリストを使ってタイムラインを取得できます:
@@ -62,7 +69,7 @@ Mastodon 家系はリスト名を `title` で返しますが CLI 側で `name` �
 
 | コマンド | 説明 |
 |---------|------|
-| `login <host>` | インスタンスにログイン (Misskey 系は MiAuth、Nekonoverse は OAuth OOB を自動選択) |
+| `login <host> [miauth\|mastodon]` | インスタンスにログイン (Misskey 系は MiAuth、Mastodon 系は OAuth OOB を自動選択。第2引数で方式を明示可) |
 | `account` | 登録済みアカウント一覧 (アクティブに `*`) |
 | `account use @user@host` | アクティブアカウントを切り替え (1ホスト1アカウントなら host のみでも可) |
 | `logout` | アクティブアカウントを削除 |
