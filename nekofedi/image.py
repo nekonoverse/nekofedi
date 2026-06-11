@@ -22,8 +22,11 @@ import io
 import os
 import select
 import sys
+import zlib
 
 import requests
+
+from ._kitty_diacritics import ROWCOLUMN_DIACRITICS
 
 # Imported here so tests can monkeypatch them as
 # ``nekofedi.image.termios.tcgetattr`` etc. ``termios`` / ``tty`` are
@@ -64,6 +67,20 @@ _APC_SUFFIX = "\x1b\\"
 # Requires ``set -g allow-passthrough on`` in the user's tmux config.
 _TMUX_PT_PREFIX = "\x1bPtmux;"
 _TMUX_PT_SUFFIX = "\x1b\\"
+
+# Kitty Unicode placeholder (virtual placement) support. Under tmux a plain
+# ``a=T`` placement is invisible to tmux: it doesn't scroll with the text and
+# tmux never clears it, so the image stays pinned over the UI. Instead we
+# create a *virtual* placement (``U=1``) and "stamp" it onto real text cells
+# made of the placeholder char U+10EEEE, whose row/column are encoded with
+# combining diacritics and whose image id is encoded in the cell foreground
+# colour. Those cells are ordinary text, so tmux scrolls and clears them
+# normally and the image rides along. See:
+#   https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders
+_KITTY_PLACEHOLDER = "\U0010eeee"
+# Terminal cells are ~twice as tall as wide; a square image spanning N columns
+# needs ~N/2 rows to keep its aspect (matches the 256-colour half-block ratio).
+_CELL_ASPECT = 2
 
 # Sixel detection timeout (seconds) — modern terminals respond in <10 ms,
 # 200 ms leaves headroom for SSH over slow links without being user-visible.
@@ -295,8 +312,8 @@ def render_image_sixel_from_url(url, max_pixel_width):
 # ---------------------------------------------------------------------------
 
 
-def _to_png_bytes(image_bytes):
-    """Normalize arbitrary image bytes to a PNG byte string.
+def _to_png_with_size(image_bytes):
+    """Normalize arbitrary image bytes to ``(png_bytes, width, height)``.
 
     The Kitty graphics protocol accepts PNG directly (``f=100``). We always
     re-encode via Pillow so the input can be JPEG / WebP / ...
@@ -304,12 +321,18 @@ def _to_png_bytes(image_bytes):
     from PIL import Image  # lazy import
 
     img = Image.open(io.BytesIO(image_bytes))
+    width, height = img.size
     # Kitty accepts RGBA PNG just fine; convert only if unusual mode.
     if img.mode not in ("RGB", "RGBA", "L", "LA"):
         img = img.convert("RGBA")
     out = io.BytesIO()
     img.save(out, format="PNG")
-    return out.getvalue()
+    return out.getvalue(), width, height
+
+
+def _to_png_bytes(image_bytes):
+    """Normalize arbitrary image bytes to a PNG byte string."""
+    return _to_png_with_size(image_bytes)[0]
 
 
 def _in_tmux():
@@ -328,43 +351,92 @@ def _wrap_tmux_passthrough(seq):
     return _TMUX_PT_PREFIX + seq.replace("\x1b", "\x1b\x1b") + _TMUX_PT_SUFFIX
 
 
-def render_image_kitty(image_bytes, max_cols):
-    """Render ``image_bytes`` as a Kitty graphics protocol escape string.
+def _apc_transmit_chunks(payload, first_header, in_tmux):
+    """Chunk a base64 ``payload`` into Kitty APC ``_G`` transmit segments.
 
-    The image is re-encoded as PNG, base64 is chunked into 4096-byte
-    segments, and each segment is wrapped in an APC ``_G`` escape with
-    ``m=1`` on all but the last (``m=0``). The first segment carries the
-    header parameters ``a=T,f=100,q=2,c=<max_cols>``. ``q=2`` suppresses the
-    terminal's OK/error replies, which would otherwise land in stdin and be
-    read as stray input by the next prompt. When inside tmux each APC chunk
-    is individually wrapped in a DCS passthrough so the escapes reach the
-    outer terminal instead of being swallowed — see ``_TMUX_PT_PREFIX`` for
-    why the wrapping is per-chunk rather than around the whole sequence.
+    The first segment carries ``first_header``; subsequent segments carry only
+    the continuation flag. ``m=1`` on all but the last (``m=0``). When
+    ``in_tmux`` each segment is individually wrapped in a tmux DCS passthrough
+    — see ``_TMUX_PT_PREFIX`` for why wrapping is per-chunk.
     """
-    png = _to_png_bytes(image_bytes)
-    payload = base64.standard_b64encode(png).decode("ascii")
-
     chunks = [
         payload[i : i + _KITTY_CHUNK_SIZE]
         for i in range(0, len(payload), _KITTY_CHUNK_SIZE)
     ]
     if not chunks:
         return ""
-
-    in_tmux = _in_tmux()
     parts = []
     for idx, chunk in enumerate(chunks):
-        is_last = idx == len(chunks) - 1
-        m_flag = "0" if is_last else "1"
-        if idx == 0:
-            header = f"a=T,f=100,q=2,c={max_cols},m={m_flag}"
-        else:
-            header = f"m={m_flag}"
+        m_flag = "0" if idx == len(chunks) - 1 else "1"
+        header = f"{first_header},m={m_flag}" if idx == 0 else f"m={m_flag}"
         apc = f"{_APC_PREFIX}{header};{chunk}{_APC_SUFFIX}"
         if in_tmux:
             apc = _wrap_tmux_passthrough(apc)
         parts.append(apc)
-    return "".join(parts) + "\n"
+    return "".join(parts)
+
+
+def _placeholder_grid(image_id, rows, cols):
+    """Build the Unicode-placeholder cell grid that stamps a virtual placement.
+
+    Each cell is the placeholder char with the row/column encoded as combining
+    diacritics; the image id is carried by the cell foreground colour. Only the
+    first cell of each row needs explicit diacritics — the terminal advances the
+    column for bare placeholder cells and inherits the row from the left.
+    """
+    r = (image_id >> 16) & 0xFF
+    g = (image_id >> 8) & 0xFF
+    b = image_id & 0xFF
+    fg = f"\x1b[38;2;{r};{g};{b}m"
+    col0 = chr(ROWCOLUMN_DIACRITICS[0])
+    lines = []
+    for row in range(rows):
+        first = _KITTY_PLACEHOLDER + chr(ROWCOLUMN_DIACRITICS[row]) + col0
+        rest = _KITTY_PLACEHOLDER * (cols - 1)
+        lines.append(f"{fg}{first}{rest}\x1b[39m")
+    return "\n".join(lines) + "\n"
+
+
+def _render_kitty_unicode(png, width, height, max_cols):
+    """Render via a Kitty *virtual* placement + Unicode placeholders (tmux-safe).
+
+    Unlike a plain ``a=T`` placement, the image is anchored to real text cells,
+    so tmux scrolls and clears it like ordinary text instead of leaving it
+    pinned over the UI.
+    """
+    payload = base64.standard_b64encode(png).decode("ascii")
+    if not payload:
+        return ""
+    limit = len(ROWCOLUMN_DIACRITICS)
+    cols = max(1, min(max_cols, limit))
+    rows = max(1, min(round(cols * height / (_CELL_ASPECT * width)), limit))
+    # Deterministic 24-bit id (encodes into the RGB foreground; nonzero).
+    image_id = (zlib.crc32(png) & 0xFFFFFF) or 1
+    header = f"a=T,U=1,i={image_id},f=100,q=2,c={cols},r={rows}"
+    transmit = _apc_transmit_chunks(payload, header, in_tmux=True)
+    return transmit + _placeholder_grid(image_id, rows, cols)
+
+
+def render_image_kitty(image_bytes, max_cols):
+    """Render ``image_bytes`` as a Kitty graphics protocol escape string.
+
+    Outside tmux the image is transmitted-and-displayed directly (``a=T``):
+    the PNG base64 is chunked into APC ``_G`` segments (``m=1`` until the last
+    ``m=0``); the first carries ``a=T,f=100,q=2,c=<max_cols>``. ``q=2``
+    suppresses the terminal's OK/error replies, which would otherwise land in
+    stdin and be read as stray input by the next prompt.
+
+    Inside tmux a plain ``a=T`` placement is unmanaged by tmux — it never
+    scrolls or clears and stays pinned over the UI. So we switch to a virtual
+    placement addressed by Unicode placeholders (:func:`_render_kitty_unicode`),
+    which rides along with the surrounding text.
+    """
+    png, width, height = _to_png_with_size(image_bytes)
+    if _in_tmux():
+        return _render_kitty_unicode(png, width, height, max_cols)
+    payload = base64.standard_b64encode(png).decode("ascii")
+    body = _apc_transmit_chunks(payload, f"a=T,f=100,q=2,c={max_cols}", in_tmux=False)
+    return body + "\n" if body else ""
 
 
 def render_image_kitty_from_url(url, max_cols):
