@@ -1854,6 +1854,36 @@ class TestRenderImageKitty:
         for ln in grid_lines:
             assert ln.count("\U0010eeee") == cols
 
+        # The image id (i=) must be the value carried by the cell foreground
+        # colour — that link is how the placeholders reference the placement.
+        img_id = int(re.search(r",i=(\d+),", out).group(1))
+        r, g, b = (int(x) for x in re.search(r"\x1b\[38;2;(\d+);(\d+);(\d+)m", out).groups())
+        assert img_id == (r << 16) | (g << 8) | b
+
+    def test_tmux_transmit_roundtrips_to_png(self):
+        # The passthrough-wrapped transmit, once un-wrapped the way tmux would
+        # forward it (strip each wrapper, un-double ESC), must reconstruct a
+        # valid PNG — pins the tmux-path byte stream, not just its structure.
+        import base64 as b64
+        import re
+
+        from nekofedi import image
+
+        with patch("nekofedi.image._in_tmux", return_value=True):
+            out = image.render_image_kitty(_larger_png(), max_cols=40)
+        transmit = out[: out.index("\x1b[38;2;")]
+        forwarded = "".join(
+            seg[:-2].replace("\x1b\x1b", "\x1b")  # drop wrapper ST, un-double
+            for seg in transmit.split("\x1bPtmux;")
+            if seg
+        )
+        # Relies on the APC header carrying no ';' (only the header/payload
+        # separator), which holds for _apc_transmit_chunks' comma-keyed headers.
+        segs = re.findall(r"\x1b_G[^;]*;([^\x1b]*)\x1b\\", forwarded)
+        assert segs, "no APC segments recovered from passthrough"
+        decoded = b64.standard_b64decode("".join(segs))
+        assert decoded[:8] == b"\x89PNG\r\n\x1a\n"
+
     def test_small_image_single_chunk_is_m0(self):
         from nekofedi import image
 

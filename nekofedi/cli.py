@@ -1165,7 +1165,7 @@ class NekofediCLI:
             return
 
         if total > 1:
-            print(f"  [{label}/{total}]")
+            print(f"[{label}/{total}]")
         # Kitty Unicode placeholders use non-ASCII (U+10EEEE + combining
         # diacritics); write raw UTF-8 bytes so a non-UTF-8 stdout locale
         # (common in containers) can't mangle them.
@@ -1179,7 +1179,7 @@ class NekofediCLI:
         alt = target.get("alt")
         if alt:
             print_formatted_text(FormattedText([
-                ("ansibrightblack", f"  alt: {alt}"),
+                ("ansibrightblack", f"alt: {alt}"),
             ]))
 
     def cmd_notif(self, arg):
