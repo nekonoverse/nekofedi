@@ -1824,6 +1824,19 @@ class TestRenderImageKitty:
             assert s.endswith("\x1b\x1b\\\x1b\\")
             assert s.count("\x1b\x1b_G") == 1
 
+        # Stronger invariant: un-wrapping the tmux output (drop each wrapper's
+        # terminating ST, un-double the inner ESCs) must reproduce the non-tmux
+        # byte stream exactly. Guards against header/order drift that keeps the
+        # structure valid but changes the bytes the terminal ultimately sees.
+        with patch("nekofedi.image._in_tmux", return_value=False):
+            plain = image.render_image_kitty(png, max_cols=40)
+        unwrapped = "".join(
+            seg.removesuffix("\x1b\\").replace("\x1b\x1b", "\x1b")
+            for seg in out.rstrip("\n").split("\x1bPtmux;")
+            if seg
+        ) + "\n"
+        assert unwrapped == plain
+
     def test_small_image_single_chunk_is_m0(self):
         from nekofedi import image
 

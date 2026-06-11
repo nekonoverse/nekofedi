@@ -60,6 +60,7 @@ _APC_SUFFIX = "\x1b\\"
 # single passthrough string, so one giant DCS is truncated and the image
 # silently fails for anything larger than a tiny single-chunk PNG. Per-chunk
 # wrapping keeps every DCS under ~4 KB, which is what kitty's own icat does.
+# (The exact cap is tmux's INPUT_BUF_LIMIT and varies across tmux versions.)
 # Requires ``set -g allow-passthrough on`` in the user's tmux config.
 _TMUX_PT_PREFIX = "\x1bPtmux;"
 _TMUX_PT_SUFFIX = "\x1b\\"
