@@ -1789,53 +1789,70 @@ class TestRenderImageKitty:
         assert out.startswith("\x1b_Ga=T,f=100,q=2,c=20,m=")
         assert out.endswith("\x1b\\\n")
 
-    def test_tmux_wraps_in_passthrough(self):
+    def test_tmux_uses_unicode_placeholder(self):
+        # Inside tmux a plain a=T placement is unmanaged by tmux (pins over the
+        # UI, never clears). We must instead transmit a virtual placement (U=1)
+        # and address it with Unicode placeholders. The transmit is still
+        # tmux-passthrough wrapped; the placeholder grid is plain text.
         from nekofedi import image
 
         with patch("nekofedi.image._in_tmux", return_value=True):
             out = image.render_image_kitty(_tiny_red_png(), max_cols=20)
-        # DCS passthrough wrapper, with inner ESC doubled.
-        assert out.startswith("\x1bPtmux;")
-        assert out.endswith("\x1b\\\n")
-        assert "\x1b\x1b_G" in out
+        assert out.startswith("\x1bPtmux;")          # passthrough-wrapped transmit
+        assert "a=T,U=1,i=" in out                    # virtual placement
+        assert ",c=20,r=" in out                      # declared cell box
+        assert "\x1b\x1b_G" in out                    # doubled APC prefix in wrapper
+        assert "\U0010eeee" in out                    # placeholder cells
+        assert out.endswith("\n")
 
-    def test_tmux_wraps_each_chunk_separately(self):
-        # Regression: a multi-chunk image must wrap *each* APC chunk in its own
-        # passthrough, not the whole concatenation in one giant DCS — tmux caps
-        # passthrough length, so one big DCS is truncated and the image fails.
+    def test_tmux_transmit_chunks_wrapped_separately(self):
+        # Regression: the (possibly multi-chunk) transmit must wrap *each* APC
+        # chunk in its own passthrough, not the whole run in one giant DCS —
+        # tmux caps passthrough length, so one big DCS is truncated and fails.
         from nekofedi import image
 
         png = _larger_png()
         with patch("nekofedi.image._in_tmux", return_value=True):
             out = image.render_image_kitty(png, max_cols=40)
 
-        wraps = out.count("\x1bPtmux;")
-        assert wraps >= 2, "expected a multi-chunk image to use >1 passthrough"
-        # No raw/unwrapped APC escape may leak to tmux: every _G prefix appears
-        # only as the doubled form inside a wrapper, exactly one per wrapper.
-        assert out.count("\x1b\x1b_G") == wraps
-        assert out.count("\x1b_G") == wraps
-        # Each passthrough holds exactly one APC chunk: doubled-APC open, and a
-        # doubled APC terminator (\x1b\x1b\\) followed by the wrapper's own ST.
-        segs = [s for s in out.rstrip("\n").split("\x1bPtmux;") if s]
-        assert len(segs) == wraps
-        for s in segs:
+        # The plain placeholder grid begins at the first SGR fg colour; the
+        # passthrough-wrapped transmit is everything before it.
+        transmit, grid = out[: out.index("\x1b[38;2;")], out[out.index("\x1b[38;2;"):]
+
+        wraps = transmit.count("\x1bPtmux;")
+        assert wraps >= 2, "expected a multi-chunk transmit to use >1 passthrough"
+        # One APC chunk per wrapper; no raw/unwrapped APC escape leaks to tmux.
+        assert transmit.count("\x1b\x1b_G") == wraps
+        assert transmit.count("\x1b_G") == wraps
+        for s in (seg for seg in transmit.split("\x1bPtmux;") if seg):
             assert s.startswith("\x1b\x1b_G")
             assert s.endswith("\x1b\x1b\\\x1b\\")
             assert s.count("\x1b\x1b_G") == 1
+        # The placeholder grid is ordinary text — never passthrough-wrapped.
+        assert "\x1bPtmux;" not in grid
+        assert "\U0010eeee" in grid
 
-        # Stronger invariant: un-wrapping the tmux output (drop each wrapper's
-        # terminating ST, un-double the inner ESCs) must reproduce the non-tmux
-        # byte stream exactly. Guards against header/order drift that keeps the
-        # structure valid but changes the bytes the terminal ultimately sees.
-        with patch("nekofedi.image._in_tmux", return_value=False):
-            plain = image.render_image_kitty(png, max_cols=40)
-        unwrapped = "".join(
-            seg.removesuffix("\x1b\\").replace("\x1b\x1b", "\x1b")
-            for seg in out.rstrip("\n").split("\x1bPtmux;")
-            if seg
-        ) + "\n"
-        assert unwrapped == plain
+    def test_tmux_placeholder_grid_matches_declared_size(self):
+        # The r=<rows>,c=<cols> in the transmit header must match the actual
+        # placeholder grid the terminal stamps the image onto.
+        import re
+
+        from nekofedi import image
+
+        png = _larger_png()
+        with patch("nekofedi.image._in_tmux", return_value=True):
+            out = image.render_image_kitty(png, max_cols=40)
+
+        m = re.search(r",c=(\d+),r=(\d+)", out)
+        assert m, "transmit header missing c=/r="
+        cols, rows = int(m.group(1)), int(m.group(2))
+        assert cols == 40
+
+        grid = out[out.index("\x1b[38;2;"):]
+        grid_lines = grid.rstrip("\n").split("\n")
+        assert len(grid_lines) == rows
+        for ln in grid_lines:
+            assert ln.count("\U0010eeee") == cols
 
     def test_small_image_single_chunk_is_m0(self):
         from nekofedi import image

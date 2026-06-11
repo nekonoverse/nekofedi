@@ -1166,8 +1166,16 @@ class NekofediCLI:
 
         if total > 1:
             print(f"  [{label}/{total}]")
-        sys.stdout.write(output)
-        sys.stdout.flush()
+        # Kitty Unicode placeholders use non-ASCII (U+10EEEE + combining
+        # diacritics); write raw UTF-8 bytes so a non-UTF-8 stdout locale
+        # (common in containers) can't mangle them.
+        try:
+            sys.stdout.flush()
+            sys.stdout.buffer.write(output.encode("utf-8"))
+            sys.stdout.buffer.flush()
+        except (AttributeError, ValueError):
+            sys.stdout.write(output)
+            sys.stdout.flush()
         alt = target.get("alt")
         if alt:
             print_formatted_text(FormattedText([
