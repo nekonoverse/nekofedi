@@ -1877,6 +1877,8 @@ class TestRenderImageKitty:
             for seg in transmit.split("\x1bPtmux;")
             if seg
         )
+        # Relies on the APC header carrying no ';' (only the header/payload
+        # separator), which holds for _apc_transmit_chunks' comma-keyed headers.
         segs = re.findall(r"\x1b_G[^;]*;([^\x1b]*)\x1b\\", forwarded)
         assert segs, "no APC segments recovered from passthrough"
         decoded = b64.standard_b64decode("".join(segs))

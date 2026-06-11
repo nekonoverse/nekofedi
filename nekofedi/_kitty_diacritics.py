@@ -4,8 +4,9 @@ Auto-generated from kitty's ``gen/rowcolumn-diacritics.txt`` (297 combining
 marks of combining class 230, derived from Unicode 6.0.0). The Nth entry
 (0-indexed) encodes the value N for a placeholder cell's row or column.
 
-Do not edit by hand. To regenerate, take the first ``;``-delimited field
-(the hex code point) of every non-comment line of the upstream file::
+Do not edit by hand. The code points below are the first ``;``-delimited
+field of every non-comment line of the upstream file, formatted as a Python
+tuple (``0x….,`` 12 per line). To re-extract the raw hex list::
 
     url=https://raw.githubusercontent.com/kovidgoyal/kitty/master/gen/rowcolumn-diacritics.txt
     curl -fsSL "$url" | grep -v '^#' | grep . | cut -d';' -f1
