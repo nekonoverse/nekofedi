@@ -50,10 +50,17 @@ _APC_PREFIX = "\x1b_G"
 _APC_SUFFIX = "\x1b\\"
 
 # tmux DCS passthrough wrapper. Inside tmux the terminal never sees raw APC
-# escapes — tmux swallows them — so Kitty graphics silently fail. Wrapping the
-# whole sequence in ``ESC P tmux ; <payload> ESC \`` with every inner ESC
-# doubled lets tmux forward the bytes verbatim to the outer terminal. This is
-# what image.nvim does, which is why images show there but not here.
+# escapes — tmux swallows them — so Kitty graphics silently fail. Wrapping a
+# sequence in ``ESC P tmux ; <payload> ESC \`` with every inner ESC doubled
+# lets tmux forward the bytes verbatim to the outer terminal. This is what
+# image.nvim does, which is why images show there but not here.
+#
+# Crucially, each APC *chunk* is wrapped in its own passthrough rather than
+# wrapping the whole multi-chunk sequence at once: tmux caps the length of a
+# single passthrough string, so one giant DCS is truncated and the image
+# silently fails for anything larger than a tiny single-chunk PNG. Per-chunk
+# wrapping keeps every DCS under ~4 KB, which is what kitty's own icat does.
+# (The exact cap is tmux's INPUT_BUF_LIMIT and varies across tmux versions.)
 # Requires ``set -g allow-passthrough on`` in the user's tmux config.
 _TMUX_PT_PREFIX = "\x1bPtmux;"
 _TMUX_PT_SUFFIX = "\x1b\\"
@@ -329,9 +336,10 @@ def render_image_kitty(image_bytes, max_cols):
     ``m=1`` on all but the last (``m=0``). The first segment carries the
     header parameters ``a=T,f=100,q=2,c=<max_cols>``. ``q=2`` suppresses the
     terminal's OK/error replies, which would otherwise land in stdin and be
-    read as stray input by the next prompt. When inside tmux the whole
-    sequence is wrapped in a DCS passthrough so the escapes reach the
-    outer terminal instead of being swallowed.
+    read as stray input by the next prompt. When inside tmux each APC chunk
+    is individually wrapped in a DCS passthrough so the escapes reach the
+    outer terminal instead of being swallowed — see ``_TMUX_PT_PREFIX`` for
+    why the wrapping is per-chunk rather than around the whole sequence.
     """
     png = _to_png_bytes(image_bytes)
     payload = base64.standard_b64encode(png).decode("ascii")
@@ -343,6 +351,7 @@ def render_image_kitty(image_bytes, max_cols):
     if not chunks:
         return ""
 
+    in_tmux = _in_tmux()
     parts = []
     for idx, chunk in enumerate(chunks):
         is_last = idx == len(chunks) - 1
@@ -351,11 +360,11 @@ def render_image_kitty(image_bytes, max_cols):
             header = f"a=T,f=100,q=2,c={max_cols},m={m_flag}"
         else:
             header = f"m={m_flag}"
-        parts.append(f"{_APC_PREFIX}{header};{chunk}{_APC_SUFFIX}")
-    seq = "".join(parts)
-    if _in_tmux():
-        seq = _wrap_tmux_passthrough(seq)
-    return seq + "\n"
+        apc = f"{_APC_PREFIX}{header};{chunk}{_APC_SUFFIX}"
+        if in_tmux:
+            apc = _wrap_tmux_passthrough(apc)
+        parts.append(apc)
+    return "".join(parts) + "\n"
 
 
 def render_image_kitty_from_url(url, max_cols):

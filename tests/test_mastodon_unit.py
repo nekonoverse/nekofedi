@@ -1799,6 +1799,44 @@ class TestRenderImageKitty:
         assert out.endswith("\x1b\\\n")
         assert "\x1b\x1b_G" in out
 
+    def test_tmux_wraps_each_chunk_separately(self):
+        # Regression: a multi-chunk image must wrap *each* APC chunk in its own
+        # passthrough, not the whole concatenation in one giant DCS — tmux caps
+        # passthrough length, so one big DCS is truncated and the image fails.
+        from nekofedi import image
+
+        png = _larger_png()
+        with patch("nekofedi.image._in_tmux", return_value=True):
+            out = image.render_image_kitty(png, max_cols=40)
+
+        wraps = out.count("\x1bPtmux;")
+        assert wraps >= 2, "expected a multi-chunk image to use >1 passthrough"
+        # No raw/unwrapped APC escape may leak to tmux: every _G prefix appears
+        # only as the doubled form inside a wrapper, exactly one per wrapper.
+        assert out.count("\x1b\x1b_G") == wraps
+        assert out.count("\x1b_G") == wraps
+        # Each passthrough holds exactly one APC chunk: doubled-APC open, and a
+        # doubled APC terminator (\x1b\x1b\\) followed by the wrapper's own ST.
+        segs = [s for s in out.rstrip("\n").split("\x1bPtmux;") if s]
+        assert len(segs) == wraps
+        for s in segs:
+            assert s.startswith("\x1b\x1b_G")
+            assert s.endswith("\x1b\x1b\\\x1b\\")
+            assert s.count("\x1b\x1b_G") == 1
+
+        # Stronger invariant: un-wrapping the tmux output (drop each wrapper's
+        # terminating ST, un-double the inner ESCs) must reproduce the non-tmux
+        # byte stream exactly. Guards against header/order drift that keeps the
+        # structure valid but changes the bytes the terminal ultimately sees.
+        with patch("nekofedi.image._in_tmux", return_value=False):
+            plain = image.render_image_kitty(png, max_cols=40)
+        unwrapped = "".join(
+            seg.removesuffix("\x1b\\").replace("\x1b\x1b", "\x1b")
+            for seg in out.rstrip("\n").split("\x1bPtmux;")
+            if seg
+        ) + "\n"
+        assert unwrapped == plain
+
     def test_small_image_single_chunk_is_m0(self):
         from nekofedi import image
 
