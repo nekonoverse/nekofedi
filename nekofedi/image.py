@@ -330,11 +330,6 @@ def _to_png_with_size(image_bytes):
     return out.getvalue(), width, height
 
 
-def _to_png_bytes(image_bytes):
-    """Normalize arbitrary image bytes to a PNG byte string."""
-    return _to_png_with_size(image_bytes)[0]
-
-
 def _in_tmux():
     """Return ``True`` when running inside a tmux (or screen) session."""
     if os.environ.get("TMUX"):
